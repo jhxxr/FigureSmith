@@ -47,3 +47,24 @@ Phase 2: local SAM3 checkpoint + load_from_HF=False, RMBG local_files_only, stri
 ### Status
 
 [OK] **Completed**
+
+
+## Session 3: FigureSmith Phase 3 model manager
+
+**Date**: 2026-07-27
+**Task**: FigureSmith Phase 3 model manager
+**Branch**: `master`
+
+### Summary
+
+Phase 3: SAM3/RMBG import manager with staging/atomic promote, Zip Slip+bomb guards, pin policy, API/CLI, 164 tests. Commit 858245a. Ready for Phase 4 Tauri desktop shell.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `858245a` | (see git log) |
+
+### Status
+
+[OK] **Completed**

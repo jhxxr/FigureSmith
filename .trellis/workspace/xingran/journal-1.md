@@ -26,3 +26,24 @@ Completed Phase 1: imported AutoFigure-Edit into vendor/, created figuresmith pa
 ### Status
 
 [OK] **Completed**
+
+
+## Session 2: FigureSmith Phase 2 local models
+
+**Date**: 2026-07-27
+**Task**: FigureSmith Phase 2 local models
+**Branch**: `master`
+
+### Summary
+
+Phase 2: local SAM3 checkpoint + load_from_HF=False, RMBG local_files_only, strict offline env/endpoint validation, registry paths, 122 tests. Fixed gitignore models/ package exclusion. Commit b5a5d6c.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b5a5d6c` | (see git log) |
+
+### Status
+
+[OK] **Completed**

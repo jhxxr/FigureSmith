@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "figuresmith"
+version = "0.1.0"
+description = "FigureSmith (图匠) — local-first scientific figure generation and SVG editing"
+readme = "../../README.md"
+requires-python = ">=3.10,<3.13"
+license = { text = "MIT" }
+authors = [
+  { name = "FigureSmith contributors" }
+]
+keywords = ["figuresmith", "scientific-figures", "svg", "desktop"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Private :: Do Not Upload",
+]
+
+# Runtime deps are tracked in requirements.txt for Phase 1 practicality
+# (torch/CUDA variants differ by machine). Prefer:
+#   pip install -r apps/backend/requirements.txt
+dependencies = [
+  "fastapi>=0.110,<1.0",
+  "uvicorn[standard]>=0.24,<1.0",
+  "pydantic>=2.6,<3.0",
+  "python-multipart>=0.0.9,<1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.0,<9.0",
+]
+
+[project.scripts]
+# ``main`` is a top-level module next to the figuresmith package (apps/backend/main.py).
+figuresmith-backend = "main:main"
+
+[tool.setuptools]
+# Include the development entry module so the console script is importable after install.
+py-modules = ["main"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["figuresmith*"]
+
+[tool.pytest.ini_options]
+testpaths = ["../../tests"]
+pythonpath = ["."]
+
+# Known limitation:
+# Overall product plan targets Python 3.12. Phase 1 allows >=3.10 so developers
+# can scaffold and smoke-test without a hard 3.12 requirement. Prefer 3.12 for
+# later GPU/SAM3 work when available.

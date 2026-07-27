@@ -1,0 +1,13 @@
+{
+  "$schema_comment": "FigureSmith model manifest shell — Phase 1 empty schema; Phase 2 fills entries.",
+  "version": 1,
+  "product": "FigureSmith",
+  "phase": 1,
+  "description": "Local model pack manifest. No weights are stored in the git repository.",
+  "models": [],
+  "notes": [
+    "Phase 2 will define SAM3 and RMBG local pack entries (id, files, sha256, license).",
+    "Do not commit *.pt / *.safetensors / model directories.",
+    "Source code license is independent of third-party model weight licenses."
+  ]
+}

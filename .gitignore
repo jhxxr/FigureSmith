@@ -1,0 +1,77 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Secrets / local env
+.env
+.env.local
+*.pem
+
+# Model weights and large binary artifacts (never commit)
+models/
+**/*.pt
+**/*.pth
+**/*.onnx
+**/*.safetensors
+**/*.bin
+**/*.ckpt
+**/*.h5
+**/*.pb
+*.gguf
+
+# Runtime outputs / caches
+outputs/
+uploads/
+tmp/
+temp/
+.cache/
+*.log
+
+# IDE / editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# Node (if added later)
+node_modules/
+
+# Packaging / installers
+*.msi
+*.exe
+*.dmg
+*.AppImage
+runtime-pack/
+dist-desktop/
+
+# Local model import staging
+resources/models/
+*.zip
+!docs/**/*.zip

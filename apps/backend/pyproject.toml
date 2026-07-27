@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "figuresmith"
-version = "0.2.0"
+version = "0.3.0"
 description = "FigureSmith (图匠) — local-first scientific figure generation and SVG editing"
 readme = "../../README.md"
 requires-python = ">=3.10,<3.13"
@@ -36,6 +36,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest>=7.0,<9.0",
+  "httpx>=0.27,<1.0",
 ]
 
 [project.scripts]

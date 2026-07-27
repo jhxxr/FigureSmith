@@ -44,6 +44,10 @@ REQUIRED_PATHS = [
     "docs/licenses.md",
     "docs/phase1-delivery.md",
     "docs/phase2-delivery.md",
+    "docs/phase3-delivery.md",
+    "apps/backend/figuresmith/models/manager.py",
+    "apps/backend/figuresmith/api/models_routes.py",
+    "scripts/import-model.ps1",
     # Root compliance / branding
     "LICENSE",
     "NOTICE.md",

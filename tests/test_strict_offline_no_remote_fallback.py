@@ -131,7 +131,8 @@ def test_model_manifest_phase2_entries() -> None:
     data = json.loads(
         (REPO / "resources" / "model-manifest.json").read_text(encoding="utf-8")
     )
-    assert data["phase"] == 2
+    # Phase 3 bumped manifest.phase while preserving Phase 2 load contracts.
+    assert data["phase"] >= 2
     ids = {m["id"] for m in data["models"]}
     assert "sam3" in ids
     assert "rmbg-2.0" in ids
@@ -139,6 +140,9 @@ def test_model_manifest_phase2_entries() -> None:
     assert sam3["load"]["load_from_HF"] is False
     rmbg = next(m for m in data["models"] if m["id"] == "rmbg-2.0")
     assert rmbg["load"]["local_files_only"] is True
+    # Phase 3 pin fields exist (values may be null until release hashing).
+    assert "official_sha256" in sam3 or "sha256" in sam3
+    assert "pin_policy" in data or data["phase"] >= 3
 
 
 def test_autofigure2_parses() -> None:

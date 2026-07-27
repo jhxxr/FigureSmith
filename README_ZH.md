@@ -10,17 +10,18 @@
 
 > FigureSmith is an independent open-source project based on AutoFigure-Edit. It is not affiliated with or endorsed by ResearAI.
 
-## 阶段二状态
+## 阶段三状态
 
-阶段二交付**本地模型加载契约**与**严格离线默认**：
+阶段三在阶段二本地加载契约之上交付**可安全导入的模型管理器**：
 
-- 上游基线 + 最小 FigureSmith 补丁（显式本地 SAM3 / RMBG）
-- SAM3 必须提供本地 checkpoint，且 `load_from_HF=False`
-- RMBG 本地目录加载使用 `local_files_only=True`；严格模式下无 HF 下载回退
-- 离线 endpoint 校验与模型路径注册表
-- 无 GPU/无权重即可通过的契约测试
+- 导入 SAM3 `.pt` 与 RMBG ZIP/目录到应用数据目录（staging + 原子替换）
+- SHA-256 与可选官方 pin 校验；不匹配默认拒绝（`FIGURESMITH_ALLOW_UNPINNED_MODELS=1` 开发放行）
+- 导入失败回滚，不破坏已可用旧模型
+- 生命周期 API：`/api/models/*`（仅接受本机绝对 `source_path`）
+- 开发 CLI：`python -m figuresmith.models.cli`
+- 无 GPU/无真实 GB 级权重即可通过的契约测试
 
-**尚未包含：** 模型导入向导（阶段三）、Tauri 桌面壳（阶段四）、Runtime Pack/安装包、仓库内模型权重。
+**尚未包含：** Tauri 桌面壳与原生文件选择器（阶段四）、Runtime Pack/安装包、仓库内模型权重。
 
 ### 本地模型环境变量
 
@@ -31,8 +32,9 @@
 | `FIGURESMITH_SAM3_BPE` | 可选 BPE 词表路径 |
 | `FIGURESMITH_RMBG_MODEL_PATH` | 本地 RMBG-2.0 模型目录 |
 | `FIGURESMITH_DATA_DIR` | 可选应用数据根目录 |
+| `FIGURESMITH_ALLOW_UNPINNED_MODELS` | 开发：允许与官方 pin 不匹配的导入 |
 
-详见 [docs/phase2-delivery.md](./docs/phase2-delivery.md)。
+详见 [docs/phase3-delivery.md](./docs/phase3-delivery.md)、[docs/phase2-delivery.md](./docs/phase2-delivery.md)。
 
 ## 与 AutoFigure-Edit 的关系
 

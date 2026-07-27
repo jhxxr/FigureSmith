@@ -145,8 +145,8 @@ Endpoint validation rejects suffix tricks such as `localhost.example.com` and `1
 
 ## Phase 3 handoff
 
-- Model pack import wizard (ZIP/folder) with Zip Slip guards
-- Write `metadata.json` / registry updates from UI
-- Checksum verification against manifest
+- Model pack import wizard (ZIP/folder) with Zip Slip guards — **done in Phase 3**
+- Write `metadata.json` / registry updates from UI — backend ready; Tauri UI in Phase 4
+- Checksum verification against manifest — **done in Phase 3** (pins may still be null)
 - UI model cards and status
 - Replace env-centric setup with managed registry as primary UX

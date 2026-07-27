@@ -2,7 +2,30 @@
 
 All notable changes to FigureSmith are documented in this file.
 
+## [0.3.0] — 2026-07-27
+
+### Phase 3 — Model manager (import / verify / delete / rollback)
+
+- Add staging + atomic promote + trash restore so failed imports never destroy a working pack.
+- Add SAM3 checkpoint import (`import_sam3.py`) with extension/size/SHA-256/metadata checks.
+- Add RMBG ZIP/folder import (`import_rmbg.py`) with Zip Slip guards, required-file checks, and trust_remote_code warnings.
+- Add manifest pin policy (`manifest.py`): mismatch rejects by default; `FIGURESMITH_ALLOW_UNPINNED_MODELS=1` allows unpinned dev imports.
+- Add `ModelManager` facade and FastAPI routes under `/api/models/*` (local absolute `source_path` only; no multi-GB multipart).
+- Mount model routes from `apps/backend/main.py` onto the vendor app.
+- Add developer CLI: `python -m figuresmith.models.cli` and `scripts/import-model.ps1`.
+- Extend `resources/model-manifest.json` with Phase 3 pin/import fields (official pins may remain null).
+- Add unit tests for checksums, Zip Slip, SAM3/RMBG rollback, pin policy, and API TestClient flows (no real multi-GB weights).
+- Document delivery in `docs/phase3-delivery.md`.
+
+### Known non-goals in this release
+
+- No Tauri native file picker / full desktop UI (Phase 4).
+- No runtime pack / installer (Phase 6).
+- No model weights distributed in git.
+- Official release pins may still be null until weight hashing is finalized.
+
 ## [0.2.0] — 2026-07-27
+
 
 ### Phase 2 — Local SAM3/RMBG loading & strict offline
 

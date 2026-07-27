@@ -6,18 +6,18 @@ Local-first scientific figure generation, segmentation, vectorization, and SVG e
 
 > Chinese README: [README_ZH.md](./README_ZH.md)
 
-## Status (Phase 2)
+## Status (Phase 3)
 
-Phase 2 delivers **local model loading contracts** and **strict offline defaults**:
+Phase 3 delivers a **safe local model manager** on top of Phase 2 load contracts:
 
-- Vendored AutoFigure-Edit baseline under `vendor/` with minimal FigureSmith patches
-- Local SAM3 load requires explicit checkpoint (`load_from_HF=False`)
-- Local RMBG load uses `local_files_only=True` (no HF fallback under strict mode)
-- FigureSmith package helpers for offline endpoint validation and model path registry
-- Windows setup / run / verify-offline scripts
-- Contract tests that pass **without GPU or weight files**
+- Import SAM3 `.pt` and RMBG ZIP/folder into app data with staging + atomic promote
+- SHA-256 + optional official pin checks; pin mismatch rejects unless `FIGURESMITH_ALLOW_UNPINNED_MODELS=1`
+- Failed imports **roll back** and do not destroy a previously working pack
+- Lifecycle API: `GET/POST/DELETE /api/models…` (local absolute `source_path` only)
+- Dev CLI: `python -m figuresmith.models.cli`
+- Contract tests that pass **without GPU or multi-GB weight files**
 
-**Not yet:** model import wizard (Phase 3), Tauri shell (Phase 4), runtime pack/installer, or shipping model weights.
+**Not yet:** Tauri shell / native picker UI (Phase 4), runtime pack/installer, or shipping model weights.
 
 ### Local model environment variables
 
@@ -28,8 +28,9 @@ Phase 2 delivers **local model loading contracts** and **strict offline defaults
 | `FIGURESMITH_SAM3_BPE` | Optional BPE vocab path |
 | `FIGURESMITH_RMBG_MODEL_PATH` | Path to local RMBG-2.0 model directory |
 | `FIGURESMITH_DATA_DIR` | Optional app-data root override |
+| `FIGURESMITH_ALLOW_UNPINNED_MODELS` | Dev: allow imports that do not match official pins |
 
-See [docs/phase2-delivery.md](./docs/phase2-delivery.md) and [docs/development.md](./docs/development.md).
+See [docs/phase3-delivery.md](./docs/phase3-delivery.md), [docs/phase2-delivery.md](./docs/phase2-delivery.md), and [docs/development.md](./docs/development.md).
 
 ## Relationship to AutoFigure-Edit
 
@@ -95,7 +96,8 @@ FigureSmith/
 
 ## Development docs
 
-- [docs/development.md](./docs/development.md) — setup, run, model paths, tests
+- [docs/development.md](./docs/development.md) — setup, run, model paths, import, tests
+- [docs/phase3-delivery.md](./docs/phase3-delivery.md) — Phase 3 model manager delivery
 - [docs/phase2-delivery.md](./docs/phase2-delivery.md) — Phase 2 file list, commands, limits
 - [docs/phase1-delivery.md](./docs/phase1-delivery.md) — Phase 1 file list and limits
 - [docs/licenses.md](./docs/licenses.md) — license map
@@ -104,7 +106,7 @@ FigureSmith/
 ## Tests
 
 ```powershell
-$env:PYTHONPATH = "apps\backend"
+$env:PYTHONPATH = "apps\backend;vendor\autofigure_edit"
 python -m pytest tests -q
 python -c "import figuresmith; print(figuresmith.__version__)"
 ```
@@ -114,9 +116,10 @@ python -c "import figuresmith; print(figuresmith.__version__)"
 | Phase | Focus |
 |-------|--------|
 | 1 | Repo scaffold, vendor import, branding, compliance, dev entry |
-| 2 (this) | Local SAM3/RMBG loading, strict offline, model path registry |
-| 3+ | Model import UI, hardening, security, packaging preparation |
-| 4 | Tauri desktop shell |
+| 2 | Local SAM3/RMBG loading, strict offline, model path registry |
+| 3 (this) | Model import/verify/delete, checksums, pin policy, rollback |
+| 4 | Tauri desktop shell + native file picker |
+| 6 | Runtime pack / installer |
 
 ## Citation / upstream
 

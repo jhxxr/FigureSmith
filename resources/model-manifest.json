@@ -1,9 +1,9 @@
 {
-  "$schema_comment": "FigureSmith model manifest — Phase 2 skeleton (no weights in git).",
-  "version": 2,
+  "$schema_comment": "FigureSmith model manifest — Phase 3 (import/pin policy; no weights in git).",
+  "version": 3,
   "product": "FigureSmith",
-  "phase": 2,
-  "description": "Local model pack metadata. Weights are never stored in the git repository.",
+  "phase": 3,
+  "description": "Local model pack metadata, import targets, and optional official SHA-256 pins. Weights are never stored in the git repository.",
   "models": [
     {
       "id": "sam3",
@@ -16,16 +16,28 @@
         "sam3.pt"
       ],
       "optional_files": [
-        "bpe_simple_vocab_16e6.txt.gz"
+        "bpe_simple_vocab_16e6.txt.gz",
+        "metadata.json",
+        "checksum.sha256"
       ],
       "load": {
         "entry": "build_sam3_image_model",
         "checkpoint_path_arg": "checkpoint_path",
         "load_from_HF": false,
-        "notes": "Phase 2 requires explicit local checkpoint_path and load_from_HF=False."
+        "notes": "Requires explicit local checkpoint_path and load_from_HF=False."
+      },
+      "import": {
+        "accepts": [".pt", ".pth"],
+        "staging": "models/.staging/sam3-<uuid>/",
+        "destination": "models/sam3/",
+        "writes": ["sam3.pt", "metadata.json", "checksum.sha256"]
       },
       "license_note": "Model weight license is separate from FigureSmith source license. Review the SAM3 provider terms before redistribution.",
       "sha256": null,
+      "official_sha256": null,
+      "files_sha256": {
+        "sam3.pt": null
+      },
       "import_ui": "phase3"
     },
     {
@@ -40,18 +52,43 @@
         "preprocessor_config.json",
         "model.safetensors"
       ],
+      "optional_files": [
+        "metadata.json",
+        "checksum.sha256",
+        "birefnet.py",
+        "BiRefNet.py",
+        "modeling_birefnet.py",
+        "configuration_birefnet.py"
+      ],
       "load": {
         "entry": "AutoModelForImageSegmentation.from_pretrained",
         "local_files_only": true,
         "trust_remote_code": true,
-        "notes": "Phase 2 forbids HF hub download fallback under strict offline."
+        "notes": "Forbids HF hub download fallback under strict offline. trust_remote_code may execute local pack Python — import only trusted sources."
+      },
+      "import": {
+        "accepts": ["zip", "directory"],
+        "staging": "models/.staging/rmbg-2.0-<uuid>/",
+        "destination": "models/rmbg-2.0/",
+        "zip_slip_guards": true,
+        "max_files_default": 200,
+        "max_uncompressed_default_gib": 8
       },
       "upstream_repo_hint": "briaai/RMBG-2.0",
       "license_note": "Gated / third-party model weights. Source code license ≠ weight license. Do not commit weights.",
       "sha256": null,
+      "official_sha256": null,
+      "files_sha256": {
+        "model.safetensors": null
+      },
       "import_ui": "phase3"
     }
   ],
+  "pin_policy": {
+    "description": "When official_sha256 / files_sha256 pins are non-null, mismatch rejects import unless FIGURESMITH_ALLOW_UNPINNED_MODELS=1.",
+    "allow_unpinned_env": "FIGURESMITH_ALLOW_UNPINNED_MODELS",
+    "null_pins_mean": "Import allowed; official_verified=false with warning."
+  },
   "settings_file": {
     "app_data": "%LOCALAPPDATA%/FigureSmith/settings.json",
     "dev": ".figuresmith/settings.json",
@@ -66,7 +103,8 @@
   },
   "notes": [
     "Do not commit *.pt / *.safetensors / model directories.",
-    "Phase 3 will add ZIP/folder import, checksum verification, and UI model cards.",
-    "Source code license is independent of third-party model weight licenses."
+    "Phase 3 import uses staging + atomic promote; failed imports do not destroy verified packs.",
+    "Source code license is independent of third-party model weight licenses.",
+    "Primary import API accepts local absolute source_path only (no multi-GB multipart upload)."
   ]
 }

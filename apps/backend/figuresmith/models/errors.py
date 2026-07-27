@@ -84,3 +84,47 @@ class PathTraversalRejected(FigureSmithError):
     code = "PATH_TRAVERSAL_REJECTED"
     message_zh = "拒绝不安全的模型路径（路径穿越）"
     message_en = "Rejected unsafe model path (path traversal)"
+
+
+class ModelImportError(FigureSmithError):
+    """Base class for Phase 3 model import failures."""
+
+    code = "MODEL_IMPORT_ERROR"
+    message_zh = "模型导入失败"
+    message_en = "Model import failed"
+
+
+class ModelImportInvalidSource(ModelImportError):
+    code = "MODEL_IMPORT_INVALID_SOURCE"
+    message_zh = "导入源路径无效或不存在（须为本机绝对路径）"
+    message_en = "Import source path is invalid or missing (absolute local path required)"
+
+
+class ModelImportZipSlip(ModelImportError):
+    code = "MODEL_IMPORT_ZIP_SLIP"
+    message_zh = "拒绝不安全的 ZIP 成员路径（Zip Slip / 路径穿越）"
+    message_en = "Rejected unsafe ZIP member path (Zip Slip / path traversal)"
+
+
+class ModelImportPinMismatch(ModelImportError):
+    code = "MODEL_IMPORT_PIN_MISMATCH"
+    message_zh = "模型哈希与官方清单不匹配，默认拒绝导入"
+    message_en = "Model hash does not match official manifest pins; import rejected by default"
+
+
+class ModelImportSizeError(ModelImportError):
+    code = "MODEL_IMPORT_SIZE_ERROR"
+    message_zh = "模型文件大小超出允许范围"
+    message_en = "Model file size is outside the allowed range"
+
+
+class ModelNotInstalled(FigureSmithError):
+    code = "MODEL_NOT_INSTALLED"
+    message_zh = "尚未安装该模型"
+    message_en = "Model is not installed"
+
+
+class ModelDeleteError(FigureSmithError):
+    code = "MODEL_DELETE_ERROR"
+    message_zh = "删除模型失败"
+    message_en = "Failed to delete model"

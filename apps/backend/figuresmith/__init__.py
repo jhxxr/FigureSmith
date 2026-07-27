@@ -1,9 +1,9 @@
 """FigureSmith backend package (图匠).
 
-Phase 2 adds local SAM3/RMBG loading helpers and strict offline controls under
-``figuresmith.models``, ``figuresmith.security``, and ``figuresmith.runtime``.
+Phase 3 adds safe local model import/verify/delete (staging + pin policy) on top
+of Phase 2 local load contracts and strict offline controls.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = ["__version__"]

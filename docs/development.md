@@ -1,4 +1,4 @@
-# Development guide — FigureSmith (Phase 2)
+# Development guide — FigureSmith (Phase 3)
 
 ## Prerequisites
 
@@ -11,15 +11,15 @@
 
 | Path | Role |
 |------|------|
-| `apps/backend/figuresmith/` | FigureSmith-owned package (security, models, runtime, pipeline) |
-| `apps/backend/main.py` | Dev entry: strict offline + vendor FastAPI |
+| `apps/backend/figuresmith/` | FigureSmith-owned package (security, models, runtime, pipeline, api) |
+| `apps/backend/main.py` | Dev entry: strict offline + vendor FastAPI + `/api/models` |
 | `apps/desktop/` | Tauri placeholder (Phase 4) |
 | `vendor/autofigure_edit/` | Upstream baseline + **minimal FIGURESMITH patches** |
 | `vendor/svg_edit/` | Boundary copy of svg-edit static assets |
-| `resources/` | Model manifest skeleton, licenses, notices (**no weights**) |
-| `scripts/` | setup-dev, run-backend, verify-offline |
+| `resources/` | Model manifest (pins optional), licenses, notices (**no weights**) |
+| `scripts/` | setup-dev, run-backend, verify-offline, import-model |
 | `docs/` | Developer and compliance docs |
-| `tests/` | Layout + Phase 2 offline/model contract tests |
+| `tests/` | Layout + offline/model/import contract tests |
 
 ## Setup
 
@@ -46,6 +46,8 @@ Resolution order: **CLI > env > settings.json > default app-data layout**.
 | `FIGURESMITH_SAM3_BPE` | Optional BPE vocab path |
 | `FIGURESMITH_RMBG_MODEL_PATH` | Local RMBG-2.0 directory (`config.json`, weights, …) |
 | `FIGURESMITH_DATA_DIR` | Override app data root |
+| `FIGURESMITH_ALLOW_UNPINNED_MODELS` | Dev: allow imports that do not match official pins |
+| `FIGURESMITH_SAM3_MIN_BYTES` | Override SAM3 minimum size gate (tests/dev) |
 
 Default Windows layout:
 
@@ -59,7 +61,35 @@ Default Windows layout:
 
 Dev settings (optional): `.figuresmith/settings.json` — see `resources/model-manifest.json` example.
 
-**Server policy:** HTTP clients cannot force arbitrary host filesystem model paths. Only env/registry paths are injected into job subprocesses.
+**Server policy:** HTTP job clients cannot force arbitrary host filesystem model paths for runs. Model **import** APIs accept only absolute local `source_path` values (for desktop picker handoff); they copy into app data.
+
+## Import models (Phase 3)
+
+### CLI
+
+```powershell
+$env:PYTHONPATH = "apps\backend;vendor\autofigure_edit"
+
+python -m figuresmith.models.cli import-sam3 --source C:\weights\sam3.pt
+python -m figuresmith.models.cli import-rmbg --source C:\weights\RMBG-2.0 --kind dir
+python -m figuresmith.models.cli list
+```
+
+Or: `./scripts/import-model.ps1 -Sam3 C:\weights\sam3.pt`
+
+### HTTP (loopback backend)
+
+```powershell
+./scripts/run-backend.ps1
+# POST http://127.0.0.1:8765/api/models/sam3/import
+# {"source_path":"C:/weights/sam3.pt"}
+```
+
+Failed imports use staging + trash restore and **do not** overwrite a previously verified pack.
+
+RMBG ZIP extraction enforces Zip Slip guards. Manifest pin mismatches are rejected unless `FIGURESMITH_ALLOW_UNPINNED_MODELS=1`.
+
+See [docs/phase3-delivery.md](./phase3-delivery.md).
 
 ## Run backend (loopback + strict offline)
 
@@ -73,6 +103,7 @@ Defaults:
 - Port: `8765`
 - `FIGURESMITH_STRICT_OFFLINE=1`
 - Health: `http://127.0.0.1:8765/healthz`
+- Models: `http://127.0.0.1:8765/api/models`
 
 Disable strict offline for experimental cloud/HF workflows (not recommended for desktop):
 
@@ -89,7 +120,7 @@ $env:PYTHONPATH = "apps\backend;vendor\autofigure_edit"
 ./scripts/verify-offline.ps1
 ```
 
-All Phase 2 contract tests pass **without GPU and without weight files**.
+All Phase 2/3 contract tests pass **without GPU and without multi-GB weight files**.
 
 ## Vendor policy
 
@@ -104,7 +135,8 @@ All Phase 2 contract tests pass **without GPU and without weight files**.
 |--------|--------|
 | `scripts/setup-dev.ps1` | Dev venv + deps |
 | `scripts/run-backend.ps1` | Loopback backend, strict offline default |
-| `scripts/verify-offline.ps1` | Phase 2 offline contract tests |
+| `scripts/verify-offline.ps1` | Offline/model contract tests |
+| `scripts/import-model.ps1` | Phase 3 CLI wrapper for SAM3/RMBG import |
 | `scripts/build-runtime.ps1` | Phase 6 placeholder |
 | `scripts/build-desktop.ps1` | Phase 4 placeholder |
 

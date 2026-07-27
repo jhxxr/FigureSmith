@@ -3,10 +3,14 @@
 Imports the vendor AutoFigure-Edit FastAPI app and runs it bound to
 loopback only (127.0.0.1). This is intentional for local/desktop use.
 
-Phase 2: applies strict offline env by default and injects model path env
+Phase 2+: applies strict offline env by default and injects model path env
 from the local registry before importing heavy vendor stacks.
 
+Phase 3: mounts ``/api/models/*`` model manager routes (local path import,
+verify, delete) onto the vendor app without rewriting vendor server.py.
+
 Health check: GET /healthz
+Models API:   GET /api/models
 Default URL:  http://127.0.0.1:8765/
 """
 
@@ -44,6 +48,23 @@ def _load_vendor_app():
     if not hasattr(vendor_server, "app"):
         raise SystemExit("vendor server.py does not expose FastAPI `app`")
     return vendor_server.app
+
+
+def _mount_figuresmith_routes(app) -> None:
+    """Attach FigureSmith-owned API routers (Phase 3 model manager) to vendor app."""
+    try:
+        from figuresmith.api.models_routes import mount_models_routes
+    except ImportError as exc:  # pragma: no cover
+        print(f"[FigureSmith] WARNING: model routes unavailable: {exc}", file=sys.stderr)
+        return
+    # Avoid double-mount when reload/import runs twice.
+    existing = {getattr(r, "path", None) for r in getattr(app, "routes", [])}
+    if "/api/models" in existing or any(
+        str(getattr(r, "path", "")).startswith("/api/models") for r in getattr(app, "routes", [])
+    ):
+        return
+    mount_models_routes(app)
+    print("[FigureSmith] mounted /api/models/* (Phase 3 model manager)")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -109,6 +130,7 @@ def main(argv: list[str] | None = None) -> None:
     vendor_root = get_vendor_root()
     ensure_vendor_on_sys_path()
     app = _load_vendor_app()
+    _mount_figuresmith_routes(app)
 
     try:
         import uvicorn
@@ -118,11 +140,12 @@ def main(argv: list[str] | None = None) -> None:
             "`pip install -r apps/backend/requirements.txt`."
         ) from exc
 
-    print("--- FigureSmith backend (Phase 2) ---")
+    print("--- FigureSmith backend (Phase 3) ---")
     print(f"Vendor root : {vendor_root}")
     print(f"Uvicorn app : {get_vendor_server_module_hint()}")
     print(f"Local URL   : http://{args.host}:{args.port}/")
     print(f"Health      : http://{args.host}:{args.port}/healthz")
+    print(f"Models API  : http://{args.host}:{args.port}/api/models")
     print("Bind policy : 127.0.0.1 only (recommended)")
     print(f"Strict off. : {strict}")
     print("--------------------------------")

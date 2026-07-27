@@ -1,5 +1,6 @@
-# FigureSmith — run local backend (Phase 1)
+# FigureSmith — run local backend (Phase 2)
 # Binds to 127.0.0.1 only by default. Health: /healthz
+# Defaults FIGURESMITH_STRICT_OFFLINE=1 for local/desktop launches.
 
 $ErrorActionPreference = "Stop"
 
@@ -30,10 +31,29 @@ if ($env:PYTHONPATH_EXTRA) {
     $env:PYTHONPATH = "$env:PYTHONPATH;$env:PYTHONPATH_EXTRA"
 }
 
-Write-Host "=== FigureSmith backend ===" -ForegroundColor Cyan
+# Phase 2: strict offline by default for FigureSmith launcher
+if (-not $env:FIGURESMITH_STRICT_OFFLINE) {
+    $env:FIGURESMITH_STRICT_OFFLINE = "1"
+}
+if (-not $env:FIGURESMITH_FORCE_LOCAL_SAM) {
+    $env:FIGURESMITH_FORCE_LOCAL_SAM = "1"
+}
+if ($env:FIGURESMITH_STRICT_OFFLINE -eq "1") {
+    $env:HF_HUB_OFFLINE = "1"
+    $env:TRANSFORMERS_OFFLINE = "1"
+    $env:HF_DATASETS_OFFLINE = "1"
+    if (-not $env:NO_PROXY) {
+        $env:NO_PROXY = "127.0.0.1,localhost,::1"
+    }
+}
+
+Write-Host "=== FigureSmith backend (Phase 2) ===" -ForegroundColor Cyan
 Write-Host "Python     : $Python"
 Write-Host "Bind       : http://${HostAddr}:${Port}/  (loopback recommended)"
 Write-Host "Health     : http://${HostAddr}:${Port}/healthz"
+Write-Host "Strict off.: $env:FIGURESMITH_STRICT_OFFLINE"
+Write-Host "SAM ckpt   : $env:FIGURESMITH_SAM3_CHECKPOINT"
+Write-Host "RMBG path  : $env:FIGURESMITH_RMBG_MODEL_PATH"
 Write-Host "PYTHONPATH : $env:PYTHONPATH"
 Write-Host "Entry      : apps/backend/main.py (imports vendor server:app)"
 Write-Host ""

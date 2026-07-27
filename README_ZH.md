@@ -10,17 +10,29 @@
 
 > FigureSmith is an independent open-source project based on AutoFigure-Edit. It is not affiliated with or endorsed by ResearAI.
 
-## 阶段一状态
+## 阶段二状态
 
-阶段一只交付**仓库骨架**：
+阶段二交付**本地模型加载契约**与**严格离线默认**：
 
-- 上游 AutoFigure-Edit 基线导入 `vendor/`
-- FigureSmith 自有 Python 包边界 `apps/backend/figuresmith/`
-- Windows 开发安装/启动脚本
-- 合规与品牌文档
-- 最小冒烟测试
+- 上游基线 + 最小 FigureSmith 补丁（显式本地 SAM3 / RMBG）
+- SAM3 必须提供本地 checkpoint，且 `load_from_HF=False`
+- RMBG 本地目录加载使用 `local_files_only=True`；严格模式下无 HF 下载回退
+- 离线 endpoint 校验与模型路径注册表
+- 无 GPU/无权重即可通过的契约测试
 
-**尚未包含：** 断网可保证的本地 SAM3/RMBG 加载、Tauri 桌面壳、Runtime Pack/安装包、仓库内模型权重。
+**尚未包含：** 模型导入向导（阶段三）、Tauri 桌面壳（阶段四）、Runtime Pack/安装包、仓库内模型权重。
+
+### 本地模型环境变量
+
+| 变量 | 作用 |
+|------|------|
+| `FIGURESMITH_STRICT_OFFLINE` | 默认 `1`，禁止远程 SAM 与 HF 下载回退 |
+| `FIGURESMITH_SAM3_CHECKPOINT` | 本地 SAM3 权重路径 |
+| `FIGURESMITH_SAM3_BPE` | 可选 BPE 词表路径 |
+| `FIGURESMITH_RMBG_MODEL_PATH` | 本地 RMBG-2.0 模型目录 |
+| `FIGURESMITH_DATA_DIR` | 可选应用数据根目录 |
+
+详见 [docs/phase2-delivery.md](./docs/phase2-delivery.md)。
 
 ## 与 AutoFigure-Edit 的关系
 

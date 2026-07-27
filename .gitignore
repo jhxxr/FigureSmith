@@ -28,7 +28,10 @@ env/
 *.pem
 
 # Model weights and large binary artifacts (never commit)
-models/
+# NOTE: do not use a bare "models/" rule — it would ignore the Python package
+# apps/backend/figuresmith/models/. Only weight storage dirs are ignored.
+/models/
+resources/models/
 **/*.pt
 **/*.pth
 **/*.onnx

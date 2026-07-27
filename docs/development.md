@@ -1,25 +1,25 @@
-# Development guide — FigureSmith (Phase 1)
+# Development guide — FigureSmith (Phase 2)
 
 ## Prerequisites
 
 - Windows 10/11 (primary target for scripts)
-- Python **3.10+** (overall plan prefers **3.12**; Phase 1 allows 3.10/3.11 for scaffold work)
+- Python **3.10+** (prefer **3.12** for GPU/SAM3 work)
 - Git
-- Optional later: CUDA-capable GPU + SAM3 install for local segmentation
+- Optional: CUDA GPU + installed `sam3` package + local checkpoints for real segmentation
 
 ## Repository map
 
 | Path | Role |
 |------|------|
-| `apps/backend/figuresmith/` | FigureSmith-owned Python package boundary |
-| `apps/backend/main.py` | Dev entry: imports vendor FastAPI app |
+| `apps/backend/figuresmith/` | FigureSmith-owned package (security, models, runtime, pipeline) |
+| `apps/backend/main.py` | Dev entry: strict offline + vendor FastAPI |
 | `apps/desktop/` | Tauri placeholder (Phase 4) |
-| `vendor/autofigure_edit/` | Upstream AutoFigure-Edit baseline (do not casually rewrite) |
+| `vendor/autofigure_edit/` | Upstream baseline + **minimal FIGURESMITH patches** |
 | `vendor/svg_edit/` | Boundary copy of svg-edit static assets |
-| `resources/` | Manifests, licenses, notices (no weights in git) |
-| `scripts/` | Windows PowerShell helpers |
+| `resources/` | Model manifest skeleton, licenses, notices (**no weights**) |
+| `scripts/` | setup-dev, run-backend, verify-offline |
 | `docs/` | Developer and compliance docs |
-| `tests/` | Phase 1 smoke tests |
+| `tests/` | Layout + Phase 2 offline/model contract tests |
 
 ## Setup
 
@@ -27,17 +27,41 @@
 cd G:\0JHX-code\Project\FigureSmith
 ./scripts/setup-dev.ps1
 copy .env.example .env
-# Edit .env: set OpenAI-compatible keys if you will call image/SVG providers
 ```
 
 Notes:
 
-- `setup-dev.ps1` creates `.venv` and installs `apps/backend/requirements.txt`.
-- **SAM3 is not installed** by setup (separate optional step).
-- **Model weights are not downloaded** by setup.
-- `HF_TOKEN` is **not** the primary desktop path; leave it unset unless you intentionally use gated HF workflows during early development.
+- Setup does **not** download model weights.
+- SAM3 package install is optional and separate.
+- Desktop path does **not** require `HF_TOKEN`.
 
-## Run backend (loopback only)
+## Local model paths
+
+Resolution order: **CLI > env > settings.json > default app-data layout**.
+
+| Env var | Meaning |
+|---------|---------|
+| `FIGURESMITH_STRICT_OFFLINE` | Default `1` for launcher; blocks remote SAM + HF fallback |
+| `FIGURESMITH_SAM3_CHECKPOINT` | Path to local `sam3.pt` (or equivalent) |
+| `FIGURESMITH_SAM3_BPE` | Optional BPE vocab path |
+| `FIGURESMITH_RMBG_MODEL_PATH` | Local RMBG-2.0 directory (`config.json`, weights, …) |
+| `FIGURESMITH_DATA_DIR` | Override app data root |
+
+Default Windows layout:
+
+```text
+%LOCALAPPDATA%\FigureSmith\
+  settings.json
+  models\
+    sam3\sam3.pt
+    rmbg-2.0\   # Transformers snapshot dir
+```
+
+Dev settings (optional): `.figuresmith/settings.json` — see `resources/model-manifest.json` example.
+
+**Server policy:** HTTP clients cannot force arbitrary host filesystem model paths. Only env/registry paths are injected into job subprocesses.
+
+## Run backend (loopback + strict offline)
 
 ```powershell
 ./scripts/run-backend.ps1
@@ -47,48 +71,42 @@ Defaults:
 
 - Host: `127.0.0.1`
 - Port: `8765`
+- `FIGURESMITH_STRICT_OFFLINE=1`
 - Health: `http://127.0.0.1:8765/healthz`
-- UI: `http://127.0.0.1:8765/`
 
-**Bind policy:** the backend must be treated as local-only. Phase 1 forces/defaults to `127.0.0.1`. Do not expose it on `0.0.0.0` for normal desktop use.
-
-Override (not recommended):
+Disable strict offline for experimental cloud/HF workflows (not recommended for desktop):
 
 ```powershell
-$env:FIGURESMITH_HOST = "127.0.0.1"
-$env:FIGURESMITH_PORT = "8765"
-./scripts/run-backend.ps1
-```
-
-Equivalent manual launch:
-
-```powershell
-$env:PYTHONPATH = "apps\backend;vendor\autofigure_edit"
-.\.venv\Scripts\python.exe apps\backend\main.py --host 127.0.0.1 --port 8765
+$env:FIGURESMITH_STRICT_OFFLINE = "0"
+.\.venv\Scripts\python.exe apps\backend\main.py --no-strict-offline
 ```
 
 ## Tests
 
 ```powershell
-$env:PYTHONPATH = "apps\backend"
+$env:PYTHONPATH = "apps\backend;vendor\autofigure_edit"
 .\.venv\Scripts\python.exe -m pytest tests -q
-.\.venv\Scripts\python.exe -c "import figuresmith; print(figuresmith.__version__)"
+./scripts/verify-offline.ps1
 ```
+
+All Phase 2 contract tests pass **without GPU and without weight files**.
 
 ## Vendor policy
 
-- Keep `vendor/autofigure_edit` as a **preserve-as-baseline** snapshot.
-- Phase 1 must **not** change SAM3/RMBG inference semantics in vendor code.
-- FigureSmith adapters start in `apps/backend/figuresmith/` (e.g. `pipeline/vendor_bridge.py`).
-- See `vendor/autofigure_edit/UPSTREAM.md`.
+- Prefer logic in `apps/backend/figuresmith/`.
+- Vendor edits must stay **minimal** and marked with `FIGURESMITH-BEGIN` / `FIGURESMITH-END`.
+- Do not reintroduce silent HF / fal / roboflow fallback on the FigureSmith strict path.
+- See `vendor/autofigure_edit/UPSTREAM.md` and `docs/phase2-delivery.md`.
 
-## Placeholder scripts
+## Scripts
 
 | Script | Status |
 |--------|--------|
-| `scripts/build-runtime.ps1` | Phase 2+ placeholder |
+| `scripts/setup-dev.ps1` | Dev venv + deps |
+| `scripts/run-backend.ps1` | Loopback backend, strict offline default |
+| `scripts/verify-offline.ps1` | Phase 2 offline contract tests |
+| `scripts/build-runtime.ps1` | Phase 6 placeholder |
 | `scripts/build-desktop.ps1` | Phase 4 placeholder |
-| `scripts/verify-offline.ps1` | Phase 2+ placeholder |
 
 ## Branding
 

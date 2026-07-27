@@ -43,6 +43,7 @@ REQUIRED_PATHS = [
     "docs/development.md",
     "docs/licenses.md",
     "docs/phase1-delivery.md",
+    "docs/phase2-delivery.md",
     # Root compliance / branding
     "LICENSE",
     "NOTICE.md",

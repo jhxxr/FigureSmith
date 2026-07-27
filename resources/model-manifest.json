@@ -1,13 +1,72 @@
 {
-  "$schema_comment": "FigureSmith model manifest shell — Phase 1 empty schema; Phase 2 fills entries.",
-  "version": 1,
+  "$schema_comment": "FigureSmith model manifest — Phase 2 skeleton (no weights in git).",
+  "version": 2,
   "product": "FigureSmith",
-  "phase": 1,
-  "description": "Local model pack manifest. No weights are stored in the git repository.",
-  "models": [],
+  "phase": 2,
+  "description": "Local model pack metadata. Weights are never stored in the git repository.",
+  "models": [
+    {
+      "id": "sam3",
+      "display_name": "SAM3 Image",
+      "role": "segmentation",
+      "format": "pytorch_checkpoint",
+      "default_relative_path": "models/sam3/sam3.pt",
+      "env_var": "FIGURESMITH_SAM3_CHECKPOINT",
+      "required_files": [
+        "sam3.pt"
+      ],
+      "optional_files": [
+        "bpe_simple_vocab_16e6.txt.gz"
+      ],
+      "load": {
+        "entry": "build_sam3_image_model",
+        "checkpoint_path_arg": "checkpoint_path",
+        "load_from_HF": false,
+        "notes": "Phase 2 requires explicit local checkpoint_path and load_from_HF=False."
+      },
+      "license_note": "Model weight license is separate from FigureSmith source license. Review the SAM3 provider terms before redistribution.",
+      "sha256": null,
+      "import_ui": "phase3"
+    },
+    {
+      "id": "rmbg-2.0",
+      "display_name": "BRIA RMBG 2.0",
+      "role": "background_removal",
+      "format": "transformers_directory",
+      "default_relative_path": "models/rmbg-2.0",
+      "env_var": "FIGURESMITH_RMBG_MODEL_PATH",
+      "required_files": [
+        "config.json",
+        "preprocessor_config.json",
+        "model.safetensors"
+      ],
+      "load": {
+        "entry": "AutoModelForImageSegmentation.from_pretrained",
+        "local_files_only": true,
+        "trust_remote_code": true,
+        "notes": "Phase 2 forbids HF hub download fallback under strict offline."
+      },
+      "upstream_repo_hint": "briaai/RMBG-2.0",
+      "license_note": "Gated / third-party model weights. Source code license ≠ weight license. Do not commit weights.",
+      "sha256": null,
+      "import_ui": "phase3"
+    }
+  ],
+  "settings_file": {
+    "app_data": "%LOCALAPPDATA%/FigureSmith/settings.json",
+    "dev": ".figuresmith/settings.json",
+    "example": {
+      "models": {
+        "sam3_checkpoint": "C:/path/to/sam3.pt",
+        "sam3_bpe": null,
+        "rmbg_model_path": "C:/path/to/RMBG-2.0"
+      },
+      "strict_offline": true
+    }
+  },
   "notes": [
-    "Phase 2 will define SAM3 and RMBG local pack entries (id, files, sha256, license).",
     "Do not commit *.pt / *.safetensors / model directories.",
+    "Phase 3 will add ZIP/folder import, checksum verification, and UI model cards.",
     "Source code license is independent of third-party model weight licenses."
   ]
 }

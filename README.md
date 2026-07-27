@@ -6,17 +6,30 @@ Local-first scientific figure generation, segmentation, vectorization, and SVG e
 
 > Chinese README: [README_ZH.md](./README_ZH.md)
 
-## Status (Phase 1)
+## Status (Phase 2)
 
-Phase 1 delivers the **repository scaffold** only:
+Phase 2 delivers **local model loading contracts** and **strict offline defaults**:
 
-- Vendored AutoFigure-Edit baseline under `vendor/`
-- FigureSmith Python package boundary under `apps/backend/figuresmith/`
-- Windows setup / run scripts
-- Compliance and branding documents
-- Minimal smoke tests
+- Vendored AutoFigure-Edit baseline under `vendor/` with minimal FigureSmith patches
+- Local SAM3 load requires explicit checkpoint (`load_from_HF=False`)
+- Local RMBG load uses `local_files_only=True` (no HF fallback under strict mode)
+- FigureSmith package helpers for offline endpoint validation and model path registry
+- Windows setup / run / verify-offline scripts
+- Contract tests that pass **without GPU or weight files**
 
-**Not yet:** offline-guaranteed local SAM3/RMBG loading, Tauri desktop shell, runtime pack/installer, or shipping model weights.
+**Not yet:** model import wizard (Phase 3), Tauri shell (Phase 4), runtime pack/installer, or shipping model weights.
+
+### Local model environment variables
+
+| Variable | Purpose |
+|----------|---------|
+| `FIGURESMITH_STRICT_OFFLINE` | Default `1` — block remote SAM + HF download fallbacks |
+| `FIGURESMITH_SAM3_CHECKPOINT` | Path to local SAM3 `.pt` checkpoint |
+| `FIGURESMITH_SAM3_BPE` | Optional BPE vocab path |
+| `FIGURESMITH_RMBG_MODEL_PATH` | Path to local RMBG-2.0 model directory |
+| `FIGURESMITH_DATA_DIR` | Optional app-data root override |
+
+See [docs/phase2-delivery.md](./docs/phase2-delivery.md) and [docs/development.md](./docs/development.md).
 
 ## Relationship to AutoFigure-Edit
 
@@ -82,7 +95,8 @@ FigureSmith/
 
 ## Development docs
 
-- [docs/development.md](./docs/development.md) — setup, run, tests
+- [docs/development.md](./docs/development.md) — setup, run, model paths, tests
+- [docs/phase2-delivery.md](./docs/phase2-delivery.md) — Phase 2 file list, commands, limits
 - [docs/phase1-delivery.md](./docs/phase1-delivery.md) — Phase 1 file list and limits
 - [docs/licenses.md](./docs/licenses.md) — license map
 - [CHANGELOG.md](./CHANGELOG.md)
@@ -99,9 +113,9 @@ python -c "import figuresmith; print(figuresmith.__version__)"
 
 | Phase | Focus |
 |-------|--------|
-| 1 (this) | Repo scaffold, vendor import, branding, compliance, dev entry |
-| 2 | Local SAM3/RMBG loading, model packs, offline path |
-| 3+ | Hardening, security, packaging preparation |
+| 1 | Repo scaffold, vendor import, branding, compliance, dev entry |
+| 2 (this) | Local SAM3/RMBG loading, strict offline, model path registry |
+| 3+ | Model import UI, hardening, security, packaging preparation |
 | 4 | Tauri desktop shell |
 
 ## Citation / upstream

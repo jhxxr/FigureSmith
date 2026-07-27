@@ -3,6 +3,9 @@
 Imports the vendor AutoFigure-Edit FastAPI app and runs it bound to
 loopback only (127.0.0.1). This is intentional for local/desktop use.
 
+Phase 2: applies strict offline env by default and injects model path env
+from the local registry before importing heavy vendor stacks.
+
 Health check: GET /healthz
 Default URL:  http://127.0.0.1:8765/
 """
@@ -24,6 +27,8 @@ from figuresmith.pipeline.vendor_bridge import (  # noqa: E402
     get_vendor_root,
     get_vendor_server_module_hint,
 )
+from figuresmith.runtime.env import prepare_figuresmith_runtime  # noqa: E402
+from figuresmith.security.offline import env_flag_true  # noqa: E402
 
 
 def _load_vendor_app():
@@ -61,11 +66,36 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Enable uvicorn reload (dev only)",
     )
+    parser.add_argument(
+        "--strict-offline",
+        dest="strict_offline",
+        action="store_true",
+        default=None,
+        help="Force strict offline (default: on via FIGURESMITH_STRICT_OFFLINE=1)",
+    )
+    parser.add_argument(
+        "--no-strict-offline",
+        dest="strict_offline",
+        action="store_false",
+        help="Disable strict offline for developer sessions",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
+
+    # Phase 2: FigureSmith launcher defaults to strict offline unless explicitly disabled.
+    if args.strict_offline is None:
+        strict = env_flag_true("FIGURESMITH_STRICT_OFFLINE", default=True)
+    else:
+        strict = bool(args.strict_offline)
+
+    applied = prepare_figuresmith_runtime(strict_offline=strict, default_strict=True)
+    if strict:
+        print(f"[FigureSmith] strict offline enabled; env applied: {sorted(applied.keys())}")
+    else:
+        print("[FigureSmith] strict offline disabled (developer mode)")
 
     # Hard preference for loopback in Phase 1 documentation + default path.
     # If a non-loopback host is forced, warn loudly.
@@ -88,12 +118,13 @@ def main(argv: list[str] | None = None) -> None:
             "`pip install -r apps/backend/requirements.txt`."
         ) from exc
 
-    print("--- FigureSmith backend (Phase 1) ---")
+    print("--- FigureSmith backend (Phase 2) ---")
     print(f"Vendor root : {vendor_root}")
     print(f"Uvicorn app : {get_vendor_server_module_hint()}")
     print(f"Local URL   : http://{args.host}:{args.port}/")
     print(f"Health      : http://{args.host}:{args.port}/healthz")
     print("Bind policy : 127.0.0.1 only (recommended)")
+    print(f"Strict off. : {strict}")
     print("--------------------------------")
 
     # Prefer importing the already-loaded app object so path setup is respected.

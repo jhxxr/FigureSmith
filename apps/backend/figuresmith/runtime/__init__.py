@@ -1,5 +1,8 @@
-"""Runtime pack discovery and offline environment helpers.
+"""Runtime pack discovery and offline environment helpers."""
 
-Phase 1: placeholder only.
-Phase 2+: model packs, offline mode, and desktop runtime integration.
-"""
+from figuresmith.runtime.env import child_process_env, prepare_figuresmith_runtime
+
+__all__ = [
+    "child_process_env",
+    "prepare_figuresmith_runtime",
+]

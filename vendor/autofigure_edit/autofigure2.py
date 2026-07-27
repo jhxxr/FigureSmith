@@ -1888,6 +1888,92 @@ def _call_sam3_roboflow_api(
     raise RuntimeError("SAM3 Roboflow 请求失败：未知错误")
 
 
+# --- FIGURESMITH-BEGIN: local-sam3-helpers ---
+def _figuresmith_env_flag(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _figuresmith_strict_offline(strict_offline: Optional[bool] = None) -> bool:
+    # Fail-closed: process env always enables strict offline when set.
+    # Explicit True also enables. Explicit False cannot disable an active env flag
+    # (developer opt-out must clear FIGURESMITH_STRICT_OFFLINE / FORCE_LOCAL_SAM,
+    # e.g. via figuresmith --no-strict-offline which sets the env to 0).
+    if _figuresmith_env_flag("FIGURESMITH_STRICT_OFFLINE", default=False) or _figuresmith_env_flag(
+        "FIGURESMITH_FORCE_LOCAL_SAM", default=False
+    ):
+        return True
+    return bool(strict_offline) if strict_offline is not None else False
+
+
+def _figuresmith_reject_remote_sam(backend: str, *, strict_offline: bool) -> None:
+    normalized = "fal" if backend == "api" else backend
+    # Re-check env so callers that only pass strict_offline=False still fail closed.
+    enforced = bool(strict_offline) or _figuresmith_strict_offline(None)
+    if not enforced:
+        return
+    if normalized != "local":
+        raise RuntimeError(
+            "[REMOTE_SAM_DISABLED] 严格离线模式下禁止使用远程 SAM 后端（fal/roboflow/api） / "
+            "Remote SAM backends (fal/roboflow/api) are disabled in strict offline mode "
+            f"(sam_backend={backend!r})"
+        )
+
+
+def _figuresmith_resolve_sam_checkpoint(sam_checkpoint_path: Optional[str]) -> Optional[str]:
+    if sam_checkpoint_path and str(sam_checkpoint_path).strip():
+        return str(Path(str(sam_checkpoint_path).strip()).expanduser())
+    env_val = os.environ.get("FIGURESMITH_SAM3_CHECKPOINT")
+    if env_val and env_val.strip():
+        return str(Path(env_val.strip()).expanduser())
+    return None
+
+
+def _figuresmith_resolve_sam_bpe(sam_bpe_path: Optional[str]) -> Optional[str]:
+    if sam_bpe_path and str(sam_bpe_path).strip():
+        return str(Path(str(sam_bpe_path).strip()).expanduser())
+    env_val = os.environ.get("FIGURESMITH_SAM3_BPE")
+    if env_val and env_val.strip():
+        return str(Path(env_val.strip()).expanduser())
+    return None
+
+
+def _figuresmith_require_sam_checkpoint(checkpoint_path: Optional[str]) -> str:
+    if not checkpoint_path:
+        raise RuntimeError(
+            "[SAM3_MODEL_MISSING] 请先配置或导入 SAM3 权重文件 / "
+            "Configure or import the SAM3 checkpoint first. "
+            "Set --sam_checkpoint_path or FIGURESMITH_SAM3_CHECKPOINT."
+        )
+    path = Path(checkpoint_path)
+    if not path.exists():
+        raise RuntimeError(
+            "[SAM3_MODEL_MISSING] 请先配置或导入 SAM3 权重文件 / "
+            "Configure or import the SAM3 checkpoint first. "
+            f"Checkpoint not found: {path}"
+        )
+    if not path.is_file():
+        raise RuntimeError(
+            f"[SAM3_MODEL_INVALID] SAM3 权重文件无效或不可读 / "
+            f"SAM3 checkpoint is invalid or unreadable: {path}"
+        )
+    return str(path)
+
+
+def _figuresmith_resolve_rmbg_path(rmbg_model_path: Optional[str]) -> Optional[str]:
+    if rmbg_model_path and str(rmbg_model_path).strip():
+        return str(Path(str(rmbg_model_path).strip()).expanduser())
+    env_val = os.environ.get("FIGURESMITH_RMBG_MODEL_PATH")
+    if env_val and env_val.strip():
+        return str(Path(env_val.strip()).expanduser())
+    return None
+
+
+# --- FIGURESMITH-END: local-sam3-helpers ---
+
+
 def segment_with_sam3(
     image_path: str,
     output_dir: str,
@@ -1897,6 +1983,11 @@ def segment_with_sam3(
     sam_backend: Literal["local", "fal", "roboflow", "api"] = "local",
     sam_api_key: Optional[str] = None,
     sam_max_masks: int = 32,
+    # --- FIGURESMITH-BEGIN: local-sam3-params ---
+    sam_checkpoint_path: Optional[str] = None,
+    sam_bpe_path: Optional[str] = None,
+    strict_offline: bool = False,
+    # --- FIGURESMITH-END: local-sam3-params ---
 ) -> tuple[str, str, list]:
     """
     使用 SAM3 分割图片，用灰色填充+黑色边框+序号标记，生成 boxlib.json
@@ -1912,6 +2003,9 @@ def segment_with_sam3(
         text_prompts: SAM3 文本提示，支持逗号分隔的多个prompt（如 "icon,diagram,arrow"）
         min_score: 最低置信度阈值
         merge_threshold: Box合并阈值，重叠比例超过此值则合并（0表示不合并，默认0.9）
+        sam_checkpoint_path: 本地 SAM3 checkpoint 路径（FigureSmith；也可经环境变量）
+        sam_bpe_path: 可选 BPE 词表路径
+        strict_offline: 严格离线时禁止 fal/roboflow 并强制本地 checkpoint
 
     Returns:
         (samed_path, boxlib_path, valid_boxes)
@@ -1939,20 +2033,40 @@ def segment_with_sam3(
     if backend == "api":
         backend = "fal"
 
+    # --- FIGURESMITH-BEGIN: local-sam3-preflight ---
+    _fs_strict = _figuresmith_strict_offline(strict_offline)
+    _figuresmith_reject_remote_sam(backend, strict_offline=_fs_strict)
+    # --- FIGURESMITH-END: local-sam3-preflight ---
+
     if backend == "local":
         from sam3.model_builder import build_sam3_image_model
         from sam3.model.sam3_image_processor import Sam3Processor
         import sam3
 
-        sam3_dir = Path(sam3.__path__[0]) if hasattr(sam3, '__path__') else Path(sam3.__file__).parent
-        bpe_path = sam3_dir / "assets" / "bpe_simple_vocab_16e6.txt.gz"
-        if not bpe_path.exists():
-            bpe_path = None
-            print("警告: 未找到 bpe 文件，使用默认路径")
+        # --- FIGURESMITH-BEGIN: local-sam3-load ---
+        resolved_ckpt = _figuresmith_resolve_sam_checkpoint(sam_checkpoint_path)
+        checkpoint_path = _figuresmith_require_sam_checkpoint(resolved_ckpt)
+
+        resolved_bpe = _figuresmith_resolve_sam_bpe(sam_bpe_path)
+        if resolved_bpe and Path(resolved_bpe).exists():
+            bpe_path = Path(resolved_bpe)
+        else:
+            sam3_dir = Path(sam3.__path__[0]) if hasattr(sam3, '__path__') else Path(sam3.__file__).parent
+            bpe_path = sam3_dir / "assets" / "bpe_simple_vocab_16e6.txt.gz"
+            if not bpe_path.exists():
+                bpe_path = None
+                print("警告: 未找到 bpe 文件，使用默认路径")
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"使用设备: {device}")
-        model = build_sam3_image_model(device=device, bpe_path=str(bpe_path) if bpe_path else None)
+        print(f"SAM3 本地 checkpoint: {checkpoint_path} (load_from_HF=False)")
+        model = build_sam3_image_model(
+            device=device,
+            bpe_path=str(bpe_path) if bpe_path else None,
+            checkpoint_path=checkpoint_path,
+            load_from_HF=False,
+        )
+        # --- FIGURESMITH-END: local-sam3-load ---
         processor = Sam3Processor(model, device=device)
         inference_state = processor.set_image(image)
 
@@ -2170,9 +2284,24 @@ def _has_rmbg2_cached_weights() -> bool:
     return any(snapshots_dir.glob("*/config.json"))
 
 
-def _ensure_rmbg2_access_ready(rmbg_model_path: Optional[str]) -> None:
-    if rmbg_model_path and Path(rmbg_model_path).exists():
+def _ensure_rmbg2_access_ready(
+    rmbg_model_path: Optional[str],
+    # --- FIGURESMITH-BEGIN: rmbg-preflight-params ---
+    strict_offline: bool = False,
+    # --- FIGURESMITH-END: rmbg-preflight-params ---
+) -> None:
+    # --- FIGURESMITH-BEGIN: rmbg-preflight ---
+    resolved = _figuresmith_resolve_rmbg_path(rmbg_model_path)
+    if resolved and Path(resolved).exists():
         return
+    if _figuresmith_strict_offline(strict_offline):
+        raise RuntimeError(
+            "[RMBG_MODEL_MISSING] 请先导入本地 RMBG-2.0 模型目录 / "
+            "Import the local RMBG-2.0 model directory first. "
+            "Set --rmbg_model_path or FIGURESMITH_RMBG_MODEL_PATH. "
+            "Strict offline mode does not download from Hugging Face."
+        )
+    # Legacy non-strict path (developer / upstream compatibility only).
     if _get_hf_token() is not None:
         return
     if _has_rmbg2_cached_weights():
@@ -2182,29 +2311,52 @@ def _ensure_rmbg2_access_ready(rmbg_model_path: Optional[str]) -> None:
         "请先完成：\n"
         "1) 申请访问 https://huggingface.co/briaai/RMBG-2.0\n"
         "2) 在 .env 设置 HF_TOKEN=你的Read权限token\n"
-        "3) 重新运行 docker compose up -d --build"
+        "3) 重新运行 docker compose up -d --build\n"
+        "或配置本地模型: --rmbg_model_path / FIGURESMITH_RMBG_MODEL_PATH"
     )
+    # --- FIGURESMITH-END: rmbg-preflight ---
 
 
 class BriaRMBG2Remover:
     """使用 BRIA-RMBG 2.0 模型进行高质量背景抠图"""
 
-    def __init__(self, model_path: Path | str | None = None, output_dir: Path | str | None = None):
-        self.model_path = Path(model_path) if model_path else None
+    def __init__(
+        self,
+        model_path: Path | str | None = None,
+        output_dir: Path | str | None = None,
+        # --- FIGURESMITH-BEGIN: rmbg-init-params ---
+        strict_offline: bool = False,
+        # --- FIGURESMITH-END: rmbg-init-params ---
+    ):
+        # --- FIGURESMITH-BEGIN: rmbg-local-load ---
+        resolved_model = _figuresmith_resolve_rmbg_path(
+            str(model_path) if model_path is not None else None
+        )
+        self.model_path = Path(resolved_model) if resolved_model else None
         self.output_dir = Path(output_dir) if output_dir else Path("./output/icons")
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.model_repo_id = "briaai/RMBG-2.0"
+        self.strict_offline = _figuresmith_strict_offline(strict_offline)
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
         self.device = device
         hf_token = _get_hf_token()
 
         if self.model_path and self.model_path.exists():
-            print(f"加载本地 RMBG 权重: {self.model_path}")
+            print(f"加载本地 RMBG 权重: {self.model_path} (local_files_only=True)")
             self.model = AutoModelForImageSegmentation.from_pretrained(
-                str(self.model_path), trust_remote_code=True,
+                str(self.model_path),
+                trust_remote_code=True,
+                local_files_only=True,
             ).eval().to(device)
+        elif self.strict_offline:
+            raise RuntimeError(
+                "[RMBG_MODEL_MISSING] 请先导入本地 RMBG-2.0 模型目录 / "
+                "Import the local RMBG-2.0 model directory first. "
+                "Strict offline mode disables Hugging Face download fallback."
+            )
         else:
+            # Legacy non-strict path retained for upstream/dev compatibility only.
             print("从 HuggingFace 加载 RMBG-2.0 模型...")
             if hf_token:
                 print("检测到 HF_TOKEN，使用鉴权访问 gated 模型。")
@@ -2233,9 +2385,11 @@ class BriaRMBG2Remover:
                         "1) 登录并申请模型访问权限: https://huggingface.co/briaai/RMBG-2.0\n"
                         "2) 创建具有 Read 权限的 token\n"
                         "3) 在项目 .env 设置 HF_TOKEN=你的token\n"
-                        "4) 重新执行: docker compose up -d --build"
+                        "4) 重新执行: docker compose up -d --build\n"
+                        "或使用本地目录: --rmbg_model_path / FIGURESMITH_RMBG_MODEL_PATH"
                     ) from e
                 raise
+        # --- FIGURESMITH-END: rmbg-local-load ---
 
         self.image_size = (1024, 1024)
         self.transform_image = transforms.Compose([
@@ -2268,6 +2422,9 @@ def crop_and_remove_background(
     boxlib_path: str,
     output_dir: str,
     rmbg_model_path: Optional[str] = None,
+    # --- FIGURESMITH-BEGIN: rmbg-crop-params ---
+    strict_offline: bool = False,
+    # --- FIGURESMITH-END: rmbg-crop-params ---
 ) -> list[dict]:
     """
     根据 boxlib.json 裁切图片并使用 RMBG2 去背景
@@ -2292,7 +2449,13 @@ def crop_and_remove_background(
         print("警告: 没有检测到有效的 box")
         return []
 
-    remover = BriaRMBG2Remover(model_path=rmbg_model_path, output_dir=icons_dir)
+    remover = BriaRMBG2Remover(
+        model_path=rmbg_model_path,
+        output_dir=icons_dir,
+        # --- FIGURESMITH-BEGIN: rmbg-crop-call ---
+        strict_offline=strict_offline,
+        # --- FIGURESMITH-END: rmbg-crop-call ---
+    )
 
     icon_infos = []
     for box_info in boxes:
@@ -3205,6 +3368,11 @@ def method_to_svg(
     sam_api_key: Optional[str] = None,
     sam_max_masks: int = 32,
     rmbg_model_path: Optional[str] = None,
+    # --- FIGURESMITH-BEGIN: method-local-params ---
+    sam_checkpoint_path: Optional[str] = None,
+    sam_bpe_path: Optional[str] = None,
+    strict_offline: bool = False,
+    # --- FIGURESMITH-END: method-local-params ---
     stop_after: int = 5,
     placeholder_mode: PlaceholderMode = "label",
     optimize_iterations: int = 2,
@@ -3366,6 +3534,11 @@ def method_to_svg(
         sam_backend=sam_backend_value,
         sam_api_key=sam_api_key,
         sam_max_masks=sam_max_masks,
+        # --- FIGURESMITH-BEGIN: method-sam-call ---
+        sam_checkpoint_path=sam_checkpoint_path,
+        sam_bpe_path=sam_bpe_path,
+        strict_offline=strict_offline,
+        # --- FIGURESMITH-END: method-sam-call ---
     )
 
     no_icon_mode = len(valid_boxes) == 0
@@ -3393,12 +3566,15 @@ def method_to_svg(
     if no_icon_mode:
         print("步骤三跳过：当前为无图标回退模式")
     else:
-        _ensure_rmbg2_access_ready(rmbg_model_path)
+        _ensure_rmbg2_access_ready(rmbg_model_path, strict_offline=strict_offline)
         icon_infos = crop_and_remove_background(
             image_path=str(figure_path),
             boxlib_path=boxlib_path,
             output_dir=str(output_dir),
             rmbg_model_path=rmbg_model_path,
+            # --- FIGURESMITH-BEGIN: method-rmbg-call ---
+            strict_offline=strict_offline,
+            # --- FIGURESMITH-END: method-rmbg-call ---
         )
 
     if stop_after == 3:
@@ -3662,6 +3838,24 @@ if __name__ == "__main__":
     # RMBG 参数
     parser.add_argument("--rmbg_model_path", default=None, help="RMBG 模型本地路径（可选）")
 
+    # --- FIGURESMITH-BEGIN: cli-local-flags ---
+    parser.add_argument(
+        "--sam_checkpoint_path",
+        default=None,
+        help="本地 SAM3 checkpoint 路径（.pt；也可设 FIGURESMITH_SAM3_CHECKPOINT）",
+    )
+    parser.add_argument(
+        "--sam_bpe_path",
+        default=None,
+        help="可选 SAM3 BPE 词表路径（也可设 FIGURESMITH_SAM3_BPE）",
+    )
+    parser.add_argument(
+        "--strict_offline",
+        action="store_true",
+        help="严格离线：禁止 fal/roboflow、禁止 HF 下载回退，并要求本地模型路径",
+    )
+    # --- FIGURESMITH-END: cli-local-flags ---
+
     # 流程控制参数
     parser.add_argument(
         "--stop_after",
@@ -3739,6 +3933,13 @@ if __name__ == "__main__":
         sam_api_key=args.sam_api_key,
         sam_max_masks=args.sam_max_masks,
         rmbg_model_path=args.rmbg_model_path,
+        # --- FIGURESMITH-BEGIN: cli-local-call ---
+        sam_checkpoint_path=args.sam_checkpoint_path,
+        sam_bpe_path=args.sam_bpe_path,
+        strict_offline=bool(args.strict_offline) or _figuresmith_env_flag(
+            "FIGURESMITH_STRICT_OFFLINE", default=False
+        ),
+        # --- FIGURESMITH-END: cli-local-call ---
         stop_after=args.stop_after,
         placeholder_mode=args.placeholder_mode,
         optimize_iterations=args.optimize_iterations,

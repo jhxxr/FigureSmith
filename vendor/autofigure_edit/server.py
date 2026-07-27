@@ -106,6 +106,11 @@ class RunRequest(BaseModel):
     optimize_iterations: Optional[int] = None
     reference_image_path: Optional[str] = None
     input_figure_path: Optional[str] = None
+    # --- FIGURESMITH-BEGIN: runrequest-strict-offline ---
+    # Client may request strict offline; model filesystem paths are NEVER taken
+    # from arbitrary client fields — server resolves from env/registry only.
+    strict_offline: bool = False
+    # --- FIGURESMITH-END: runrequest-strict-offline ---
 
 
 app = FastAPI()
@@ -186,6 +191,52 @@ def run_job(req: RunRequest) -> JSONResponse:
             detail="Provide exactly one of method_text or input_figure_path",
         )
 
+    # --- FIGURESMITH-BEGIN: server-strict-offline ---
+    def _env_flag(name: str, default: bool = False) -> bool:
+        raw = os.environ.get(name)
+        if raw is None:
+            return default
+        return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+    # FigureSmith launcher defaults strict offline; request flag can also enable it.
+    # Model paths come from server-side env/registry only — never raw client paths.
+    strict_offline = bool(req.strict_offline) or _env_flag(
+        "FIGURESMITH_STRICT_OFFLINE", default=False
+    )
+
+    sam_backend = req.sam_backend or "local"
+    if sam_backend == "api":
+        sam_backend = "fal"
+    if strict_offline and sam_backend != "local":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "[REMOTE_SAM_DISABLED] 严格离线模式下禁止使用远程 SAM 后端 / "
+                f"Remote SAM backends are disabled in strict offline mode (got {sam_backend!r})"
+            ),
+        )
+
+    # Optional: validate OpenAI-compatible base URLs are loopback under strict mode.
+    if strict_offline:
+        try:
+            from figuresmith.security.offline import validate_offline_endpoint
+        except ImportError:
+            validate_offline_endpoint = None  # type: ignore
+        if validate_offline_endpoint is not None:
+            for label, url in (("base_url", req.base_url), ("image_base_url", req.image_base_url)):
+                if url:
+                    try:
+                        validate_offline_endpoint(url)
+                    except Exception as exc:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=(
+                                f"[OFFLINE_ENDPOINT_FORBIDDEN] {label}={url!r} "
+                                f"is not a loopback endpoint under strict offline: {exc}"
+                            ),
+                        ) from exc
+    # --- FIGURESMITH-END: server-strict-offline ---
+
     job_id = datetime.now().strftime("%Y%m%d_%H%M%S_") + uuid.uuid4().hex[:8]
     output_dir = OUTPUTS_DIR / job_id
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -236,14 +287,41 @@ def run_job(req: RunRequest) -> JSONResponse:
     cmd += ["--sam_prompt", sam_prompt]
     cmd += ["--placeholder_mode", placeholder_mode]
     cmd += ["--merge_threshold", str(merge_threshold)]
-    if req.sam_backend:
-        cmd += ["--sam_backend", req.sam_backend]
-    if req.sam_api_key:
+    # Default / forced local under FigureSmith strict path.
+    cmd += ["--sam_backend", sam_backend if req.sam_backend else "local"]
+    if req.sam_api_key and not strict_offline:
         cmd += ["--sam_api_key", req.sam_api_key]
     if req.sam_max_masks is not None:
         cmd += ["--sam_max_masks", str(req.sam_max_masks)]
     if req.optimize_iterations is not None:
         cmd += ["--optimize_iterations", str(req.optimize_iterations)]
+
+    # --- FIGURESMITH-BEGIN: server-cmd-local-paths ---
+    if strict_offline:
+        cmd += ["--strict_offline"]
+
+    # Resolve model paths from env/registry only (never from client body).
+    sam_ckpt = os.environ.get("FIGURESMITH_SAM3_CHECKPOINT")
+    sam_bpe = os.environ.get("FIGURESMITH_SAM3_BPE")
+    rmbg_path = os.environ.get("FIGURESMITH_RMBG_MODEL_PATH")
+    try:
+        from figuresmith.models.registry import resolve_model_paths, export_path_env
+
+        resolved = resolve_model_paths(use_defaults=True)
+        path_env = export_path_env(resolved)
+        sam_ckpt = sam_ckpt or path_env.get("FIGURESMITH_SAM3_CHECKPOINT")
+        sam_bpe = sam_bpe or path_env.get("FIGURESMITH_SAM3_BPE")
+        rmbg_path = rmbg_path or path_env.get("FIGURESMITH_RMBG_MODEL_PATH")
+    except ImportError:
+        path_env = {}
+
+    if sam_ckpt:
+        cmd += ["--sam_checkpoint_path", sam_ckpt]
+    if sam_bpe:
+        cmd += ["--sam_bpe_path", sam_bpe]
+    if rmbg_path:
+        cmd += ["--rmbg_model_path", rmbg_path]
+    # --- FIGURESMITH-END: server-cmd-local-paths ---
 
     reference_path = req.reference_image_path
     if reference_path:
@@ -256,6 +334,33 @@ def run_job(req: RunRequest) -> JSONResponse:
 
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
+    # --- FIGURESMITH-BEGIN: server-child-env ---
+    if strict_offline:
+        env["FIGURESMITH_STRICT_OFFLINE"] = "1"
+        env["FIGURESMITH_FORCE_LOCAL_SAM"] = "1"
+        env["HF_HUB_OFFLINE"] = "1"
+        env["TRANSFORMERS_OFFLINE"] = "1"
+        env["HF_DATASETS_OFFLINE"] = "1"
+        existing_no_proxy = env.get("NO_PROXY") or env.get("no_proxy") or ""
+        no_proxy_parts = ["127.0.0.1", "localhost", "::1"]
+        no_proxy_parts.extend(p.strip() for p in existing_no_proxy.split(",") if p.strip())
+        seen_np: set[str] = set()
+        merged_np: list[str] = []
+        for part in no_proxy_parts:
+            key = part.lower()
+            if key in seen_np:
+                continue
+            seen_np.add(key)
+            merged_np.append(part)
+        env["NO_PROXY"] = ",".join(merged_np)
+        env["no_proxy"] = env["NO_PROXY"]
+    if sam_ckpt:
+        env["FIGURESMITH_SAM3_CHECKPOINT"] = sam_ckpt
+    if sam_bpe:
+        env["FIGURESMITH_SAM3_BPE"] = sam_bpe
+    if rmbg_path:
+        env["FIGURESMITH_RMBG_MODEL_PATH"] = rmbg_path
+    # --- FIGURESMITH-END: server-child-env ---
 
     log_path = output_dir / "run.log"
     log_path.write_text(

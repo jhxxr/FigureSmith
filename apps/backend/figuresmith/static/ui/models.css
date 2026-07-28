@@ -1,0 +1,20 @@
+/* models page extras */
+.fs-model-card h3 { margin-bottom: 4px; }
+.fs-model-meta {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 0.88rem;
+  color: var(--fs-muted);
+}
+.fs-model-meta code {
+  color: var(--fs-text);
+  font-size: 0.8rem;
+}
+.fs-path-box {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--fs-border);
+}

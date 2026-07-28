@@ -6,17 +6,17 @@ Local-first scientific figure generation, segmentation, vectorization, and SVG e
 
 > Chinese README: [README_ZH.md](./README_ZH.md)
 
-## Status (Phase 4)
+## Status (Phase 5)
 
-Phase 4 delivers a **Tauri 2 desktop shell** on top of Phase 3 model management:
+Phase 5 delivers **desktop UX** on top of the Phase 4 Tauri sidecar:
 
-- Desktop app under `apps/desktop/` starts a local Python **sidecar** on **127.0.0.1**
-- One-time session token (memory/env only) protects `/api/*` with Bearer auth
-- Native file pickers for SAM3/RMBG import via Tauri commands/menu
-- Exit path: `POST /api/shutdown` + process-tree kill fallback
-- Browser-only backend still works via `./scripts/run-backend.ps1` (no token / optional `FIGURESMITH_DISABLE_AUTH=1` for tests)
+- Welcome / first-run wizard (`/welcome.html`) and models page (`/models.html`)
+- `GET /api/system/status` hardware + model probe (safe without CUDA)
+- Create/import UI branded **FigureSmith**; SAM fixed to **Local SAM3** (no fal/Roboflow options, no HF_TOKEN field)
+- Log redaction helpers for secrets and home paths
+- Desktop app under `apps/desktop/` still starts a local Python sidecar on **127.0.0.1** with session token auth
 
-**Not yet:** first-run wizard polish (Phase 5), runtime pack/installer (Phase 6), or shipping model weights.
+**Not yet:** runtime pack/installer (Phase 6), or shipping model weights.
 
 ### Local model environment variables
 
@@ -32,7 +32,7 @@ Phase 4 delivers a **Tauri 2 desktop shell** on top of Phase 3 model management:
 | `FIGURESMITH_DISABLE_AUTH` | Test/dev bypass for auth middleware (`1` = off) |
 | `FIGURESMITH_PYTHON` | Optional Python interpreter for the desktop sidecar |
 
-See [docs/phase4-delivery.md](./docs/phase4-delivery.md), [docs/phase3-delivery.md](./docs/phase3-delivery.md), and [docs/development.md](./docs/development.md).
+See [docs/phase5-delivery.md](./docs/phase5-delivery.md), [docs/phase4-delivery.md](./docs/phase4-delivery.md), and [docs/development.md](./docs/development.md).
 
 ## Relationship to AutoFigure-Edit
 

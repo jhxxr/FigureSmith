@@ -1,4 +1,4 @@
-# Development guide — FigureSmith (Phase 4)
+# Development guide — FigureSmith (Phase 5)
 
 ## Prerequisites
 
@@ -12,15 +12,15 @@
 
 | Path | Role |
 |------|------|
-| `apps/backend/figuresmith/` | FigureSmith-owned package (security, models, runtime, pipeline, api) |
-| `apps/backend/main.py` | Dev entry: strict offline + vendor FastAPI + `/api/models` + auth/shutdown |
+| `apps/backend/figuresmith/` | FigureSmith-owned package (security, models, runtime, pipeline, api, static UI) |
+| `apps/backend/main.py` | Dev entry: strict offline + vendor FastAPI + models/system routes + welcome/models UI |
 | `apps/desktop/` | Tauri 2 desktop shell (Phase 4) |
-| `vendor/autofigure_edit/` | Upstream baseline + **minimal FIGURESMITH patches** |
+| `vendor/autofigure_edit/` | Upstream baseline + **minimal FIGURESMITH patches** (brand + local SAM) |
 | `vendor/svg_edit/` | Boundary copy of svg-edit static assets |
 | `resources/` | Model manifest (pins optional), licenses, notices (**no weights**) |
 | `scripts/` | setup-dev, run-backend, run-desktop, import-model, build-desktop |
 | `docs/` | Developer and compliance docs |
-| `tests/` | Layout + offline/model/import/auth contract tests |
+| `tests/` | Layout + offline/model/import/auth/UX contract tests |
 
 ## Setup
 

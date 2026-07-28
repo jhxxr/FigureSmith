@@ -3,26 +3,35 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AutoFigure-Edit Import</title>
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!-- FIGURESMITH-BEGIN phase5-brand -->
+    <title>FigureSmith — Import</title>
+    <link rel="icon" href="/fs/brand-mark.svg" type="image/svg+xml" />
+    <!-- FIGURESMITH-END phase5-brand -->
     <link rel="stylesheet" href="/styles.css" />
+    <script src="/figuresmith-bridge.js"></script>
   </head>
   <body data-page="import">
     <div class="page">
       <header class="topbar">
         <div>
           <div class="brand">
-            <img class="brand-logo" src="/favicon.svg" alt="DeepScientist logo" />
+            <!-- FIGURESMITH-BEGIN phase5-brand -->
+            <img class="brand-logo" src="/fs/brand-mark.svg" alt="FigureSmith" />
             <span id="importBrandTitle">Import Stage-1 Figure</span>
+            <!-- FIGURESMITH-END phase5-brand -->
           </div>
           <div class="subtitle" id="importPageSubtitle">
             Skip step 1 generation and continue from an existing academic figure.
           </div>
         </div>
         <div class="topbar-actions">
-          <a class="ghost topbar-link" id="importGuideBtn" href="/guide.html">I don't know how to fill this</a>
+          <!-- FIGURESMITH-BEGIN phase5-nav -->
+          <a class="ghost topbar-link" id="importWelcomeBtn" href="/welcome.html">Welcome</a>
+          <a class="ghost topbar-link" id="importBackLink" href="/">Create</a>
+          <a class="ghost topbar-link" id="importModelsBtn" href="/models.html">Models</a>
           <a class="ghost topbar-link history-action" id="importHistoryBtn" href="/history.html">History</a>
-          <a class="ghost topbar-link" id="importBackLink" href="/">Back to Method Workflow</a>
+          <a class="ghost topbar-link" id="importGuideBtn" href="/guide.html">Guide</a>
+          <!-- FIGURESMITH-END phase5-nav -->
           <div class="lang-switch" data-lang-switch>
             <button type="button" class="lang-chip" data-lang="zh">中文</button>
             <button type="button" class="lang-chip" data-lang="en">EN</button>
@@ -61,7 +70,7 @@
             <div class="route-summary">
               <div class="route-row">
                 <span class="route-label" id="importWorkflowLabel">Workflow</span>
-                <strong class="route-value" id="importWorkflowValue">Imported Figure -> SAM -> SVG</strong>
+                <strong class="route-value" id="importWorkflowValue">Imported Figure -> Local SAM3 -> SVG</strong>
               </div>
               <div class="route-row">
                 <span class="route-label" id="importStep1Label">Step 1</span>
@@ -136,14 +145,16 @@
             <div class="hint" id="importBaseUrlHint">Required for Custom. Use the OpenAI-compatible /v1 root URL, not a specific endpoint path.</div>
           </div>
 
+          <!-- FIGURESMITH-BEGIN phase5-local-sam -->
           <div class="field-group">
             <label class="field-label" id="importSamBackendLabel" for="importSamBackend">SAM3 Backend</label>
-            <select id="importSamBackend" class="input">
-              <option value="roboflow" selected>Roboflow API</option>
-              <option value="fal">fal.ai API</option>
-              <option value="local">Local (SAM3)</option>
-            </select>
+            <input id="importSamBackend" type="hidden" value="local" />
+            <div class="hint" id="importSamBackendFixedHint">
+              Fixed to <strong>Local SAM3</strong>. Remote fal/Roboflow options are not available.
+              Import weights on the <a href="/models.html">Models</a> page if missing.
+            </div>
           </div>
+          <!-- FIGURESMITH-END phase5-local-sam -->
 
           <div class="field-group">
             <label class="field-label" id="importSamPromptLabel" for="importSamPrompt">SAM Prompt</label>
@@ -156,15 +167,19 @@
             />
           </div>
 
-          <div class="field-group" id="importSamApiKeyGroup" hidden>
+          <!-- FIGURESMITH-BEGIN phase5-hide-remote-sam-key -->
+          <div class="field-group" id="importSamApiKeyGroup" hidden aria-hidden="true">
             <label class="field-label" id="importSamApiKeyLabel" for="importSamApiKey">SAM3 API Key</label>
             <input
               id="importSamApiKey"
               type="password"
               class="input"
-              placeholder="FAL/Roboflow API key"
+              value=""
+              autocomplete="off"
+              disabled
             />
           </div>
+          <!-- FIGURESMITH-END phase5-hide-remote-sam-key -->
         </section>
 
         <section class="actions">

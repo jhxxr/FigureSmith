@@ -2,6 +2,25 @@
 
 All notable changes to FigureSmith are documented in this file.
 
+## [0.5.0] — 2026-07-28
+
+### Phase 5 — Desktop UX (wizard / models / local SAM UI)
+
+- Add welcome page + skippable onboarding wizard (`/welcome.html`) with `POST /api/system/onboarding`.
+- Add `GET /api/system/status` (GPU/CUDA probe, model flags, bilingual missing-GPU messages; never crashes without CUDA).
+- Add models management page (`/models.html`) using Phase 3 APIs and Tauri import commands when available.
+- Brand vendor web as **FigureSmith / 图匠**; add nav links to Welcome/Models.
+- Force Local SAM3 in formal create/import UI; remove selectable fal/Roboflow SAM options and HF_TOKEN fields.
+- Add log redaction helpers (`figuresmith/security/redact.py`) and UI log scrubbing in `app.js`.
+- Add tests: system status, redact, UI branding contracts.
+- Document delivery in `docs/phase5-delivery.md`.
+
+### Known non-goals in this release
+
+- No full React redesign.
+- No installer / runtime pack (Phase 6).
+- No model weights in git.
+
 ## [0.4.0] — 2026-07-27
 
 ### Phase 4 — Tauri desktop shell + Python sidecar

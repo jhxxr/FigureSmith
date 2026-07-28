@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FigureSmith — Welcome</title>
+    <link rel="icon" href="/fs/brand-mark.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/fs/common.css" />
+    <link rel="stylesheet" href="/fs/welcome.css" />
+    <script src="/figuresmith-bridge.js"></script>
+    <script src="/fs/common.js"></script>
+  </head>
+  <body>
+    <div class="fs-page">
+      <header class="fs-topbar">
+        <div class="fs-brand">
+          <img src="/fs/brand-mark.svg" alt="FigureSmith" />
+          <div class="fs-brand-text">
+            <div class="fs-brand-name">FigureSmith / 图匠</div>
+            <div class="fs-brand-sub" data-i18n="tagline">Local scientific figure desktop</div>
+          </div>
+        </div>
+        <nav class="fs-nav" data-fs-nav></nav>
+      </header>
+
+      <section class="fs-card fs-hero">
+        <h1 data-i18n="title">Welcome to FigureSmith</h1>
+        <p data-i18n="subtitle">
+          First-run setup checks your environment, imports local SAM3 / RMBG weights, and optionally
+          configures an OpenAI-compatible generation provider. You can skip any step.
+        </p>
+        <div class="fs-progress" aria-hidden="true"><span id="wizardProgress"></span></div>
+        <div class="fs-btn-row">
+          <button type="button" class="fs-btn primary" id="btnStart" data-i18n="start">Start setup</button>
+          <button type="button" class="fs-btn" id="btnSkip" data-i18n="skip">Skip for now</button>
+          <a class="fs-btn" href="/" data-i18n="goto_create">Go to Create</a>
+        </div>
+      </section>
+
+      <section class="fs-card" id="wizardPanel" hidden>
+        <h2 id="stepTitle">Environment check</h2>
+        <p id="stepCopy" class="fs-muted"></p>
+        <div class="fs-steps" id="stepList"></div>
+        <div id="stepBody"></div>
+        <div id="stepAlert" class="fs-alert" hidden></div>
+        <div class="fs-btn-row">
+          <button type="button" class="fs-btn" id="btnBack" data-i18n="back">Back</button>
+          <button type="button" class="fs-btn" id="btnSkipStep" data-i18n="skip_step">Skip step</button>
+          <button type="button" class="fs-btn primary" id="btnNext" data-i18n="next">Next</button>
+        </div>
+      </section>
+
+      <p class="fs-footer-note">
+        FigureSmith is independent open-source software based on AutoFigure-Edit. Not affiliated with ResearAI.
+      </p>
+    </div>
+    <script src="/fs/welcome.js"></script>
+  </body>
+</html>

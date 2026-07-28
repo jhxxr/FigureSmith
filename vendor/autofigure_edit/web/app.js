@@ -6,6 +6,26 @@
   const DEFAULT_CUSTOM_BASE_URL = "";
   const CUSTOM_BASE_URL_PLACEHOLDER = "https://your-provider.example/v1";
   const LEGACY_CUSTOM_BASE_URLS = new Set([BIANXIE_BASE_URL]);
+  // FIGURESMITH-BEGIN phase5-local-sam
+  // Desktop formal UI only allows Local SAM3 (no fal/roboflow selection or silent fallback).
+  const FIGURESMITH_SAM_BACKEND = "local";
+  function forceLocalSamBackend(value) {
+    return FIGURESMITH_SAM_BACKEND;
+  }
+  function redactUiLogLine(text) {
+    if (!text) {
+      return text;
+    }
+    let out = String(text);
+    out = out.replace(/(authorization\s*[:=]\s*bearer\s+)([^\s"']+)/gi, "$1[REDACTED]");
+    out = out.replace(
+      /(["']?(?:api[_-]?key|sam_api_key|access[_-]?token|secret[_-]?key)["']?\s*[:=]\s*["']?)([^\s"']+)/gi,
+      "$1[REDACTED]"
+    );
+    out = out.replace(/\bsk-[A-Za-z0-9_\-]{8,}\b/g, "[REDACTED]");
+    return out;
+  }
+  // FIGURESMITH-END phase5-local-sam
   let currentLocale = loadLocale();
   const localeListeners = [];
   document.documentElement.lang = currentLocale === "zh" ? "zh-CN" : "en";
@@ -75,10 +95,15 @@
         image_size_label: "Image Size",
         upscale_label: "Auto Upscale",
         upscale_text: "Upscale figure.png to a 4K long edge while preserving aspect ratio",
+        // FIGURESMITH-BEGIN phase5-local-sam-i18n
         sam_backend_label: "SAM3 Backend",
+        sam_backend_fixed:
+          "Fixed to Local SAM3. Import weights on the Models page if missing. Remote fal/Roboflow are not offered.",
         sam_prompt_label: "SAM Prompt",
         sam_api_key_label: "SAM3 API Key",
-        sam_api_key_placeholder: "FAL/Roboflow API key",
+        sam_api_key_placeholder: "",
+        sam_models_link: "Open Models",
+        // FIGURESMITH-END phase5-local-sam-i18n
         reference_image_label: "Reference Image",
         reference_upload_text: "Drop image here or click to upload",
         confirm_btn: "Confirm -> Canvas",
@@ -88,6 +113,8 @@
           "Please fill Custom API URL as an OpenAI-compatible /v1 root URL.",
         error_custom_image_base_url_required:
           "Please fill Image Provider API URL for the Custom image route.",
+        error_model_missing:
+          "Local model missing. Open the Models page to import SAM3 / RMBG, then retry.",
         route_note_openai_linked:
           "Same as SVG path resolves step 1 to OpenAI Images, so one OpenAI-compatible key is usually enough.",
         route_note_override:
@@ -129,29 +156,37 @@
         base_url_label: "Custom API URL",
         base_url_hint:
           "Required for Custom. Use the OpenAI-compatible /v1 root URL, not a specific endpoint path.",
+        // FIGURESMITH-BEGIN phase5-local-sam-i18n
         sam_backend_label: "SAM3 Backend",
+        sam_backend_fixed:
+          "Fixed to Local SAM3. Import weights on the Models page if missing.",
         sam_prompt_label: "SAM Prompt",
         sam_api_key_label: "SAM3 API Key",
-        sam_api_key_placeholder: "FAL/Roboflow API key",
+        sam_api_key_placeholder: "",
+        // FIGURESMITH-END phase5-local-sam-i18n
         confirm_btn: "Continue From Uploaded Figure",
         starting: "Starting...",
         error_upload_required: "Please upload the stage-1 figure first.",
         error_api_key_required: "Please provide the SVG / reasoning API key.",
         error_custom_base_url_required:
           "Please fill Custom API URL as an OpenAI-compatible /v1 root URL.",
+        error_model_missing:
+          "Local model missing. Open the Models page to import SAM3 / RMBG, then retry.",
       },
       guide: {
         brand: "Configuration Guide",
         subtitle: "A practical guide for each field, each workflow, and recommended presets.",
-        back_input: "AutoFigure-Edit",
+        // FIGURESMITH-BEGIN phase5-brand-i18n
+        back_input: "FigureSmith",
+        // FIGURESMITH-END phase5-brand-i18n
         back_import: "I already have the stage-1 figure",
         overview_title: "Choose the Right Workflow",
         overview_copy:
-          "Start from method text if you want the full pipeline. Start from import mode if you already have the stage-1 academic raster figure and only want SAM + SVG.",
+          "Start from method text if you want the full pipeline. Start from import mode if you already have the stage-1 academic raster figure and only want Local SAM3 + SVG.",
         method_kicker: "Workflow A",
         method_title: "Method Text Workflow",
         method_copy:
-          "Use the main page when you want AutoFigure-Edit to generate the first-stage image for you.",
+          "Use the main page when you want FigureSmith to generate the first-stage image for you.",
         import_kicker: "Workflow B",
         import_title: "Import Existing Figure",
         import_copy:
@@ -167,26 +202,28 @@
         preset3_copy:
           "Choose Bianxie AI for the built-in aggregate route, or choose Custom and fill Custom API URL when you use your own OpenAI-compatible relay.",
         pipeline_steps_title: "What the Pipeline Actually Does",
+        // FIGURESMITH-BEGIN phase5-pipeline-labels
         step1_kicker: "Step 1",
-        step1_title: "Generate or Import figure.png",
+        step1_title: "Prepare figure.png",
         step1_copy:
           "The system either generates the academic raster figure from method text, or accepts your uploaded stage-1 figure directly.",
         step2_kicker: "Step 2",
-        step2_title: "Run SAM3 segmentation",
+        step2_title: "Local SAM3 segmentation",
         step2_copy:
-          "SAM3 detects icon-like regions and creates labeled placeholders plus box metadata.",
+          "Local SAM3 detects icon-like regions and creates labeled placeholders plus box metadata.",
         step3_kicker: "Step 3",
-        step3_title: "Crop icons and remove background",
+        step3_title: "Local RMBG cleanup",
         step3_copy:
-          "Each detected icon is cropped and cleaned so later replacement in SVG becomes easier.",
+          "Each detected icon is cropped and cleaned with local RMBG so later replacement in SVG becomes easier.",
         step4_kicker: "Step 4",
         step4_title: "Rebuild as SVG",
         step4_copy:
-          "The multimodal model reconstructs the figure as editable SVG while respecting the placeholder layout from SAM.",
+          "The multimodal model reconstructs the figure as editable SVG while respecting the placeholder layout from local SAM3.",
         step5_kicker: "Step 5",
-        step5_title: "Replace placeholders and finalize",
+        step5_title: "Assemble and finalize",
         step5_copy:
           "Placeholder boxes are replaced by processed icons and the final SVG is written for editing or export.",
+        // FIGURESMITH-END phase5-pipeline-labels
         main_steps_title: "Main Page: Step-by-Step Filling Guide",
         main_step1_title: "1. Paste method text",
         main_step1_copy:
@@ -200,22 +237,22 @@
         main_step4_title: "4. Fill API key and Custom URL only when needed",
         main_step4_copy:
           "For OpenAI Responses + linked OpenAI Images, one compatible API key is often enough. Fill Custom API URL only if you selected Custom on that route.",
-        main_step5_title: "5. Tune image model, SVG model, and SAM settings",
+        main_step5_title: "5. Confirm Local SAM3 and import models if needed",
         main_step5_copy:
-          "Leave the defaults first, then only adjust model ids or SAM prompt/backend if you know what is failing or what visual style you need.",
+          "SAM is fixed to Local SAM3. Import checkpoints on the Models page before running if status shows missing weights.",
         import_steps_title: "Import Page: Step-by-Step Filling Guide",
         import_step1_title: "1. Upload the stage-1 academic figure",
         import_step1_copy:
           "This should be the raster figure that normally would have been produced by step 1. Do not upload the reference image or a final SVG here.",
         import_step2_title: "2. Choose only the SVG / reasoning route",
         import_step2_copy:
-          "Import mode skips image generation, so there is no step 1 image provider to fill. You only need to decide how SAM and SVG reconstruction should continue.",
+          "Import mode skips image generation, so there is no step 1 image provider to fill. Local SAM3 still runs automatically.",
         import_step3_title: "3. Fill SVG model and API key",
         import_step3_copy:
           "Use the default SVG model first. Change it only if you know your provider exposes a better model for multimodal SVG reconstruction.",
-        import_step4_title: "4. Configure SAM backend",
+        import_step4_title: "4. Ensure Local SAM3 is imported",
         import_step4_copy:
-          "SAM still runs in import mode. You must choose whether it uses local SAM3, fal.ai, or Roboflow, and provide the corresponding key if the backend requires one.",
+          "FigureSmith always uses Local SAM3. Open the Models page to import/verify SAM3 and RMBG if the run fails with a model-missing error.",
         fields_title: "What Each Field Means",
         field_method_title: "Method Text",
         field_method_copy:
@@ -240,30 +277,32 @@
           "Enabled by default. It enlarges figure.png to a 4K long edge while preserving aspect ratio. Keep it on unless you specifically want the original resolution.",
         field_sam_title: "SAM Settings",
         field_sam_copy:
-          "SAM Backend selects how segmentation runs. SAM Prompt controls what objects the model should try to detect, such as icons, people, robots, or animals.",
-        sam_title: "SAM3 Backend Guide",
+          "SAM backend is fixed to Local SAM3. SAM Prompt controls what objects the model should try to detect, such as icons, people, robots, or animals.",
+        // FIGURESMITH-BEGIN phase5-local-sam-guide-i18n
+        sam_title: "Local SAM3 Guide",
         sam_local_title: "Local (SAM3)",
         sam_local_copy:
-          "Best when you already installed SAM3 locally and want everything on your own machine. No external API key is needed, but local dependencies must be ready.",
-        sam_fal_title: "fal.ai API",
+          "FigureSmith always runs Local SAM3. Import the checkpoint from the Models page. No remote SAM API key is required or collected.",
+        sam_fal_title: "Remote SAM not offered",
         sam_fal_copy:
-          "Good if you do not want to install SAM3 locally and you have a FAL key. Usually stable, but it is an external paid API route.",
-        sam_roboflow_title: "Roboflow API",
+          "fal.ai and other remote SAM hosts are not formal UI options in FigureSmith desktop. Keep weights local under app data.",
+        sam_roboflow_title: "No Roboflow SAM option",
         sam_roboflow_copy:
-          "Often the easiest hosted SAM option. Use this when you want a remote backend and your environment can reach the Roboflow endpoint.",
+          "Roboflow SAM is not selectable in the formal desktop UI. Use Local SAM3 and the Models page.",
         sam_prompt_title: "How to Fill SAM Prompt",
         sam_prompt_copy:
           "Think of SAM Prompt as the object vocabulary. Use comma-separated words such as `icon,person,robot,animal` or add domain words like `diagram,cell,molecule,arrow`.",
-        sam_when_title: "When to Change SAM Backend",
+        sam_when_title: "When Local SAM3 Fails",
         sam_when_copy:
-          "If local SAM3 is unavailable, switch to fal.ai or Roboflow. If remote APIs are slow or inaccessible, local becomes the fallback if your environment supports it.",
-        sam_key_title: "When a SAM API Key Is Required",
+          "If Local SAM3 is missing or CUDA is unavailable, open Models / Welcome for import and hardware status. FigureSmith does not silently fall back to remote SAM.",
+        sam_key_title: "No SAM API Key Field",
         sam_key_copy:
-          "Local does not need a SAM API key. fal.ai needs a FAL key. Roboflow needs a Roboflow key. If the SAM backend is local, leave the SAM API key blank.",
+          "Local SAM3 does not need a SAM API key. FigureSmith also does not surface HF_TOKEN in the desktop main path.",
+        // FIGURESMITH-END phase5-local-sam-guide-i18n
         examples_title: "Common Filling Examples",
         example1_title: "I only want the easiest stable setup",
         example1_copy:
-          "Main page. Provider = OpenAI Responses. Image Provider = Same as SVG path. Image Model = gpt-image-2. SVG Model = gpt-5.5. Fill one API key.",
+          "Main page. Provider = OpenAI Responses. Image Provider = Same as SVG path. Image Model = gpt-image-2. SVG Model = gpt-5.5. Fill one API key. Import Local SAM3 first.",
         example2_title: "I already have the stage-1 figure",
         example2_copy:
           "Import page. Upload the figure. Choose Provider = OpenAI Responses or Gemini. Fill SVG Model and API Key. Leave image settings alone because step 1 is skipped.",
@@ -273,11 +312,23 @@
         help_badge: "Need more help?",
         help_title: "Still not sure?",
         help_copy:
-          "Try consulting the project knowledge base for a more detailed explanation and up-to-date context.",
-        help_button: "Open DeepWiki",
+          "Open Welcome for first-run checks, or Models to import Local SAM3 / RMBG weights.",
+        help_button: "Open Welcome",
       },
+      // FIGURESMITH-BEGIN phase5-nav-i18n
+      nav: {
+        welcome: "Welcome",
+        create: "Create",
+        import: "Import",
+        models: "Models",
+        history: "History",
+        guide: "Guide",
+      },
+      // FIGURESMITH-END phase5-nav-i18n
       canvas: {
-        brand: "AutoFigure-Edit Canvas",
+        // FIGURESMITH-BEGIN phase5-brand-i18n
+        brand: "FigureSmith Canvas",
+        // FIGURESMITH-END phase5-brand-i18n
         status_label: "Status:",
         waiting: "Waiting",
         back_config: "Back to Config",
@@ -294,22 +345,26 @@
           'Drop an SVG-Edit build into <code>web/vendor/svg-edit/</code> (editor/index.html) to enable editing.',
         artifacts: "Artifacts",
         missing_job: "Missing job id",
+        // FIGURESMITH-BEGIN phase5-pipeline-labels
         steps: {
-          figure: "Figure generated",
-          samed: "SAM3 segmentation",
-          icon_raw: "Icons extracted",
-          icon_nobg: "Icons refined",
-          template_svg: "Template SVG ready",
-          optimized_template_svg: "Optimized template ready",
-          final_svg: "Final SVG ready",
+          figure: "Prepare image",
+          samed: "Local SAM3",
+          icon_raw: "Local RMBG",
+          icon_nobg: "Local RMBG",
+          template_svg: "SVG",
+          optimized_template_svg: "SVG",
+          final_svg: "Assemble / Done",
         },
+        // FIGURESMITH-END phase5-pipeline-labels
       },
       history: {
         nav: "History",
         brand: "History",
-        subtitle: "Saved AutoFigure-Edit outputs.",
-        back_input: "Back to Method Workflow",
-        back_import: "Back to Import Workflow",
+        // FIGURESMITH-BEGIN phase5-brand-i18n
+        subtitle: "Saved FigureSmith outputs.",
+        // FIGURESMITH-END phase5-brand-i18n
+        back_input: "Create",
+        back_import: "Import",
         refresh: "Refresh",
         summary_title: "Saved Images",
         count: "{count} items",
@@ -455,15 +510,15 @@
       guide: {
         brand: "配置指南",
         subtitle: "按字段、按工作流、按常见方案解释每一项该怎么填。",
-        back_input: "AutoFigure-Edit",
+        back_input: "FigureSmith",
         back_import: "我已经有第一阶段的图片了",
         overview_title: "先选对工作流",
         overview_copy:
-          "如果你要跑完整流程，就从方法文本开始；如果你已经有第一阶段学术位图，就走导入模式，只做 SAM + SVG。",
+          "如果你要跑完整流程，就从方法文本开始；如果你已经有第一阶段学术位图，就走导入模式，只做本地 SAM3 + SVG。",
         method_kicker: "工作流 A",
         method_title: "方法文本工作流",
         method_copy:
-          "当你希望 AutoFigure-Edit 帮你自动生成第一阶段图片时，使用主页面。",
+          "当你希望 FigureSmith 帮你自动生成第一阶段图片时，使用主页面。",
         import_kicker: "工作流 B",
         import_title: "导入已有图片",
         import_copy:
@@ -525,9 +580,9 @@
         import_step3_title: "3. 填 SVG 模型和 API Key",
         import_step3_copy:
           "先用默认 SVG 模型即可。只有当你明确知道当前 provider 暴露了更适合的多模态模型时，再手动改。",
-        import_step4_title: "4. 配置 SAM 后端",
+        import_step4_title: "4. 确认本地 SAM3",
         import_step4_copy:
-          "导入模式仍然需要 SAM。你要明确它是走本地 SAM3、fal.ai，还是 Roboflow，并根据后端填写对应 Key。",
+          "导入模式仍使用本地 SAM3 分割。请先在「模型」页导入 sam3.pt 与 RMBG-2.0；桌面版不再提供 fal/Roboflow 选项。",
         fields_title: "每个字段是什么意思",
         field_method_title: "方法文本",
         field_method_copy:
@@ -552,26 +607,26 @@
           "默认开启，会把 figure.png 等比例放大到 4K 长边。除非你明确要保留原分辨率，否则建议保持开启。",
         field_sam_title: "SAM 设置",
         field_sam_copy:
-          "SAM Backend 决定分割怎么跑；SAM Prompt 决定模型优先检测哪些对象，例如图标、人物、机器人、动物。",
+          "FigureSmith 桌面版固定使用 Local SAM3。SAM Prompt 决定优先检测哪些对象，例如图标、人物、机器人、动物。",
         sam_title: "SAM3 后端说明",
         sam_local_title: "Local (SAM3)",
         sam_local_copy:
-          "适合你已经在本地装好了 SAM3，并希望整个流程都在自己的机器上跑。它不需要外部 API key，但本地依赖必须准备好。",
-        sam_fal_title: "fal.ai API",
+          "适合你已经在本地导入了 SAM3 权重，并希望分割在本机 GPU 上运行。不需要外部 SAM API key。",
+        sam_fal_title: "不提供远程 fal SAM",
         sam_fal_copy:
-          "适合你不想本地安装 SAM3，但手里有 FAL key 的情况。通常比较稳，但它是外部付费 API 路线。",
-        sam_roboflow_title: "Roboflow API",
+          "FigureSmith 桌面正式界面不提供 fal.ai 等远程 SAM 选项。请在「模型」页导入本地权重。",
+        sam_roboflow_title: "不提供 Roboflow SAM",
         sam_roboflow_copy:
-          "通常是托管 SAM 里最容易上手的一条路。如果你想用远端分割，且环境能访问 Roboflow，就可以优先尝试它。",
+          "FigureSmith 桌面正式界面不提供 Roboflow 远程 SAM。缺失模型时请导入本地 pack，而不是切换远程后端。",
         sam_prompt_title: "SAM Prompt 怎么填",
         sam_prompt_copy:
           "可以把 SAM Prompt 理解成“对象词表”。常见写法是逗号分隔的词，比如 `icon,person,robot,animal`，也可以根据领域加上 `diagram,cell,molecule,arrow` 这类词。",
-        sam_when_title: "什么时候要切换 SAM Backend",
+        sam_when_title: "什么时候需要处理 SAM",
         sam_when_copy:
-          "如果本地 SAM3 不可用，就切到 fal.ai 或 Roboflow；如果远端 API 连不上或太慢，而你的环境支持本地 SAM3，那本地就是回退方案。",
-        sam_key_title: "什么时候需要 SAM API Key",
+          "如果本地 SAM3 不可用，请到「模型」页导入/验证权重。桌面版不会静默回退到远程 SAM。",
+        sam_key_title: "还需要 SAM API Key 吗",
         sam_key_copy:
-          "Local 不需要 SAM API key；fal.ai 需要 FAL key；Roboflow 需要 Roboflow key。如果你选的是 local，就把 SAM API key 留空。",
+          "Local SAM3 不需要 SAM API key。FigureSmith 桌面主路径也不展示 HF_TOKEN。",
         examples_title: "常见填写示例",
         example1_title: "我只想要最稳最省事的配置",
         example1_copy:
@@ -589,7 +644,7 @@
         help_button: "点击前往 DeepWiki 咨询",
       },
       canvas: {
-        brand: "AutoFigure-Edit 画布",
+        brand: "FigureSmith 画布",
         status_label: "状态：",
         waiting: "等待中",
         back_config: "返回配置页",
@@ -607,10 +662,10 @@
         artifacts: "素材",
         missing_job: "缺少 job id",
         steps: {
-          figure: "图片已生成",
-          samed: "SAM3 分割完成",
+          figure: "图片已准备",
+          samed: "本地 SAM3 分割完成",
           icon_raw: "图标已裁切",
-          icon_nobg: "图标已去背景",
+          icon_nobg: "本地 RMBG 去背景完成",
           template_svg: "模板 SVG 已就绪",
           optimized_template_svg: "优化模板已就绪",
           final_svg: "最终 SVG 已就绪",
@@ -619,7 +674,7 @@
       history: {
         nav: "历史图片",
         brand: "历史图片",
-        subtitle: "已保存的 AutoFigure-Edit 输出。",
+        subtitle: "已保存的 FigureSmith 输出。",
         back_input: "返回文本工作流",
         back_import: "返回导入工作流",
         refresh: "刷新",
@@ -853,7 +908,9 @@
         optimizeIterations: $("optimizeIterations")?.value ?? "0",
         imageSize: imageSizeInput?.value ?? "4K",
         upscaleEnabled: upscaleEnabled?.checked ?? true,
-        samBackend: samBackend?.value ?? "roboflow",
+        // FIGURESMITH-BEGIN phase5-force-local-sam
+        samBackend: forceLocalSamBackend(samBackend?.value),
+        // FIGURESMITH-END phase5-force-local-sam
         samPrompt: samPrompt?.value ?? "icon,person,robot,animal",
         samApiKey: samApiKeyInput?.value ?? "",
         referencePath: uploadedReferencePath,
@@ -908,9 +965,11 @@
       if (typeof state.upscaleEnabled === "boolean" && upscaleEnabled) {
         upscaleEnabled.checked = state.upscaleEnabled;
       }
-      if (typeof state.samBackend === "string" && samBackend) {
-        samBackend.value = state.samBackend;
+      // FIGURESMITH-BEGIN phase5-force-local-sam
+      if (samBackend) {
+        samBackend.value = forceLocalSamBackend(state.samBackend);
       }
+      // FIGURESMITH-END phase5-force-local-sam
       if (typeof state.samPrompt === "string" && samPrompt) {
         samPrompt.value = state.samPrompt;
       }
@@ -1136,15 +1195,18 @@
     }
 
     function syncSamApiKeyVisibility() {
-      const shouldShow =
-        samBackend &&
-        (samBackend.value === "fal" || samBackend.value === "roboflow");
-      if (samApiKeyGroup) {
-        samApiKeyGroup.hidden = !shouldShow;
+      // FIGURESMITH-BEGIN phase5-force-local-sam
+      if (samBackend) {
+        samBackend.value = forceLocalSamBackend(samBackend.value);
       }
-      if (!shouldShow && samApiKeyInput) {
+      // Remote SAM keys are never shown in formal desktop UI.
+      if (samApiKeyGroup) {
+        samApiKeyGroup.hidden = true;
+      }
+      if (samApiKeyInput) {
         samApiKeyInput.value = "";
       }
+      // FIGURESMITH-END phase5-force-local-sam
       saveInputState();
     }
 
@@ -1352,15 +1414,14 @@
         optimize_iterations: parseInt($("optimizeIterations").value, 10),
         enable_upscale: upscaleEnabled?.checked ?? true,
         reference_image_path: uploadedReferencePath,
-        sam_backend: $("samBackend").value,
+        sam_backend: forceLocalSamBackend($("samBackend")?.value),
         sam_prompt: $("samPrompt").value.trim() || null,
-        sam_api_key: $("samApiKey").value.trim() || null,
+        // FIGURESMITH-BEGIN phase5-force-local-sam
+        sam_api_key: null,
+        // FIGURESMITH-END phase5-force-local-sam
       };
       if (effectiveImageProvider === "gemini") {
         payload.image_size = imageSizeInput?.value || "4K";
-      }
-      if (payload.sam_backend === "local") {
-        payload.sam_api_key = null;
       }
       saveInputState();
 
@@ -1442,7 +1503,9 @@
         svgModel: svgModelInput?.value ?? "",
         apiKey: apiKeyInput?.value ?? "",
         baseUrl: normalizeCustomBaseUrl(baseUrlInput?.value ?? DEFAULT_CUSTOM_BASE_URL),
-        samBackend: samBackend?.value ?? "roboflow",
+        // FIGURESMITH-BEGIN phase5-force-local-sam
+        samBackend: forceLocalSamBackend(samBackend?.value),
+        // FIGURESMITH-END phase5-force-local-sam
         samPrompt: samPrompt?.value ?? "icon,person,robot,animal",
         samApiKey: samApiKeyInput?.value ?? "",
         uploadedFigurePath,
@@ -1473,9 +1536,11 @@
       if (typeof state.baseUrl === "string" && baseUrlInput) {
         baseUrlInput.value = normalizeCustomBaseUrl(state.baseUrl);
       }
-      if (typeof state.samBackend === "string" && samBackend) {
-        samBackend.value = state.samBackend;
+      // FIGURESMITH-BEGIN phase5-force-local-sam
+      if (samBackend) {
+        samBackend.value = forceLocalSamBackend(state.samBackend);
       }
+      // FIGURESMITH-END phase5-force-local-sam
       if (typeof state.samPrompt === "string" && samPrompt) {
         samPrompt.value = state.samPrompt;
       }
@@ -1557,15 +1622,17 @@
     }
 
     function syncSamApiKeyVisibility() {
-      const shouldShow =
-        samBackend &&
-        (samBackend.value === "fal" || samBackend.value === "roboflow");
-      if (samApiKeyGroup) {
-        samApiKeyGroup.hidden = !shouldShow;
+      // FIGURESMITH-BEGIN phase5-force-local-sam
+      if (samBackend) {
+        samBackend.value = forceLocalSamBackend(samBackend.value);
       }
-      if (!shouldShow && samApiKeyInput) {
+      if (samApiKeyGroup) {
+        samApiKeyGroup.hidden = true;
+      }
+      if (samApiKeyInput) {
         samApiKeyInput.value = "";
       }
+      // FIGURESMITH-END phase5-force-local-sam
       saveImportState();
     }
 
@@ -1698,13 +1765,12 @@
         api_key: apiKeyInput?.value.trim() || null,
         base_url: provider === "custom" ? getResolvedImportBaseUrl() : null,
         svg_model: svgModelInput?.value.trim() || null,
-        sam_backend: samBackend?.value ?? "roboflow",
+        // FIGURESMITH-BEGIN phase5-force-local-sam
+        sam_backend: forceLocalSamBackend(samBackend?.value),
         sam_prompt: samPrompt?.value.trim() || null,
-        sam_api_key: samApiKeyInput?.value.trim() || null,
+        sam_api_key: null,
+        // FIGURESMITH-END phase5-force-local-sam
       };
-      if (payload.sam_backend === "local") {
-        payload.sam_api_key = null;
-      }
       saveImportState();
 
       try {

@@ -3,23 +3,33 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AutoFigure-Edit History</title>
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!-- FIGURESMITH-BEGIN phase5-brand -->
+    <title>FigureSmith — History</title>
+    <link rel="icon" href="/fs/brand-mark.svg" type="image/svg+xml" />
+    <!-- FIGURESMITH-END phase5-brand -->
     <link rel="stylesheet" href="/styles.css" />
+    <script src="/figuresmith-bridge.js"></script>
   </head>
   <body data-page="history">
     <div class="page">
       <header class="topbar">
         <div>
           <div class="brand">
-            <img class="brand-logo" src="/favicon.svg" alt="DeepScientist logo" />
+            <!-- FIGURESMITH-BEGIN phase5-brand -->
+            <img class="brand-logo" src="/fs/brand-mark.svg" alt="FigureSmith" />
             <span id="historyBrandTitle">History</span>
+            <!-- FIGURESMITH-END phase5-brand -->
           </div>
-          <div class="subtitle" id="historySubtitle">Saved AutoFigure-Edit outputs.</div>
+          <div class="subtitle" id="historySubtitle">Saved FigureSmith outputs.</div>
         </div>
         <div class="topbar-actions">
-          <a class="ghost topbar-link" id="historyBackInputBtn" href="/">Back to Method Workflow</a>
-          <a class="ghost topbar-link" id="historyBackImportBtn" href="/import.html">Back to Import Workflow</a>
+          <!-- FIGURESMITH-BEGIN phase5-nav -->
+          <a class="ghost topbar-link" id="historyWelcomeBtn" href="/welcome.html">Welcome</a>
+          <a class="ghost topbar-link" id="historyBackInputBtn" href="/">Create</a>
+          <a class="ghost topbar-link" id="historyBackImportBtn" href="/import.html">Import</a>
+          <a class="ghost topbar-link" id="historyModelsBtn" href="/models.html">Models</a>
+          <a class="ghost topbar-link" id="historyGuideBtn" href="/guide.html">Guide</a>
+          <!-- FIGURESMITH-END phase5-nav -->
           <button class="ghost" id="historyRefreshBtn" type="button">Refresh</button>
           <div class="lang-switch" data-lang-switch>
             <button type="button" class="lang-chip" data-lang="zh">中文</button>

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FigureSmith — Models</title>
+    <link rel="icon" href="/fs/brand-mark.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/fs/common.css" />
+    <link rel="stylesheet" href="/fs/models.css" />
+    <script src="/figuresmith-bridge.js"></script>
+    <script src="/fs/common.js"></script>
+  </head>
+  <body>
+    <div class="fs-page">
+      <header class="fs-topbar">
+        <div class="fs-brand">
+          <img src="/fs/brand-mark.svg" alt="FigureSmith" />
+          <div class="fs-brand-text">
+            <div class="fs-brand-name">FigureSmith / 图匠</div>
+            <div class="fs-brand-sub" data-i18n="tagline">Local model manager</div>
+          </div>
+        </div>
+        <nav class="fs-nav" data-fs-nav></nav>
+      </header>
+
+      <section class="fs-card">
+        <h1 data-i18n="title">Model management</h1>
+        <p class="fs-muted" data-i18n="subtitle">
+          Import, verify, and remove local SAM3 / RMBG packs. Desktop app uses native file pickers;
+          browser mode can import by absolute path for development only.
+        </p>
+        <div class="fs-btn-row">
+          <button type="button" class="fs-btn" id="btnRefresh" data-i18n="refresh">Refresh</button>
+          <button type="button" class="fs-btn" id="btnOpenDir" data-i18n="open_dir">Open models folder</button>
+        </div>
+        <div id="systemSummary" class="fs-status-list" style="margin-top: 14px"></div>
+        <div id="gpuAlert" class="fs-alert" hidden></div>
+        <div id="pageMsg" class="fs-alert" hidden></div>
+      </section>
+
+      <section class="fs-grid fs-grid-2" id="modelCards"></section>
+
+      <section class="fs-card" id="browserImport" hidden>
+        <h2 data-i18n="browser_import_title">Browser / advanced path import</h2>
+        <p class="fs-muted" data-i18n="browser_import_copy">
+          Available when the desktop shell is not detected. Provide an absolute local path already
+          reachable by the Python backend process.
+        </p>
+        <div class="fs-grid fs-grid-2">
+          <div>
+            <label for="sam3Path">SAM3 checkpoint path</label>
+            <input id="sam3Path" class="fs-path-box" style="width:100%;border:1px solid var(--fs-border);background:var(--fs-surface-2);color:var(--fs-text);padding:10px;border-radius:10px" placeholder="C:\\weights\\sam3.pt" />
+            <div class="fs-btn-row">
+              <button type="button" class="fs-btn primary" id="btnImportSam3Path" data-i18n="import_sam3">Import SAM3</button>
+            </div>
+          </div>
+          <div>
+            <label for="rmbgPath">RMBG ZIP or folder path</label>
+            <input id="rmbgPath" class="fs-path-box" style="width:100%;border:1px solid var(--fs-border);background:var(--fs-surface-2);color:var(--fs-text);padding:10px;border-radius:10px" placeholder="C:\\weights\\RMBG-2.0" />
+            <div class="fs-btn-row">
+              <button type="button" class="fs-btn primary" id="btnImportRmbgPath" data-i18n="import_rmbg">Import RMBG</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <p class="fs-footer-note">
+        Weights are never shipped in git. Review third-party model licenses before redistribution.
+      </p>
+    </div>
+    <script src="/fs/models.js"></script>
+  </body>
+</html>

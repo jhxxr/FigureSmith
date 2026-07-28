@@ -1,0 +1,20 @@
+/* welcome page extras */
+.fs-hero h1 {
+  font-size: clamp(1.6rem, 3vw, 2.1rem);
+  margin: 0 0 8px;
+}
+.fs-hero p { margin: 0; max-width: 60ch; }
+.fs-progress {
+  height: 6px;
+  border-radius: 999px;
+  background: #1f2b42;
+  overflow: hidden;
+  margin: 14px 0 4px;
+}
+.fs-progress > span {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #14b8a6, #2dd4bf);
+  width: 0%;
+  transition: width 0.25s ease;
+}

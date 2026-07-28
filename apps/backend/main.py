@@ -13,8 +13,13 @@ Phase 4: optional Bearer session-token auth on ``/api/*`` when
 ``FIGURESMITH_SESSION_TOKEN`` is set; ``POST /api/shutdown`` for desktop
 sidecar lifecycle; desktop-bridge static script for WebView fetch wrapping.
 
+Phase 5: ``GET /api/system/status`` + onboarding; welcome/models static UI
+served with priority over the vendor catch-all StaticFiles mount; brand/SAM
+convergence patches live in vendor web.
+
 Health check: GET /healthz
 Models API:   GET /api/models
+System API:   GET /api/system/status
 Default URL:  http://127.0.0.1:8765/
 """
 
@@ -58,8 +63,33 @@ def _route_paths(app) -> set[str]:
     return {str(getattr(r, "path", "") or "") for r in getattr(app, "routes", [])}
 
 
+def _static_dir() -> Path:
+    return Path(__file__).resolve().parent / "figuresmith" / "static"
+
+
+def _ui_dir() -> Path:
+    return _static_dir() / "ui"
+
+
+def _insert_route_before_catch_all(app, route) -> None:
+    """Insert a Starlette route before the vendor ``Mount('/')`` catch-all.
+
+    Vendor ``server.py`` mounts ``StaticFiles`` at ``/`` last. Routes appended
+    after that mount are unreachable; insert immediately before it.
+    """
+    from starlette.routing import Mount
+
+    routes = app.router.routes
+    insert_at = len(routes)
+    for i, existing in enumerate(routes):
+        if isinstance(existing, Mount) and getattr(existing, "path", None) in ("/", ""):
+            insert_at = i
+            break
+    routes.insert(insert_at, route)
+
+
 def _mount_figuresmith_routes(app) -> None:
-    """Attach FigureSmith-owned API routers to the vendor app."""
+    """Attach FigureSmith-owned API routers and static UI to the vendor app."""
     paths = _route_paths(app)
 
     # Phase 3 model manager
@@ -74,36 +104,33 @@ def _mount_figuresmith_routes(app) -> None:
             mount_models_routes(app)
             print("[FigureSmith] mounted /api/models/* (Phase 3 model manager)")
 
-    # Phase 4 system routes (shutdown)
+    # Phase 4/5 system routes (shutdown + status + onboarding)
     try:
         from figuresmith.api.system_routes import mount_system_routes
     except ImportError as exc:  # pragma: no cover
         print(f"[FigureSmith] WARNING: system routes unavailable: {exc}", file=sys.stderr)
     else:
         mount_system_routes(app)
-        print("[FigureSmith] mounted /api/shutdown (Phase 4 lifecycle)")
+        print("[FigureSmith] mounted /api/shutdown + /api/system/* (Phase 4/5)")
 
-    # Desktop bridge script (fetch Authorization wrapper)
+    # Desktop bridge + Phase 5 static UI (must beat vendor StaticFiles mount)
     _mount_desktop_bridge(app)
+    _mount_figuresmith_ui(app)
 
 
 def _mount_desktop_bridge(app) -> None:
-    """Expose ``/figuresmith-bridge.js`` without conflicting with vendor ``/`` static."""
+    """Expose ``/figuresmith-bridge.js`` ahead of vendor ``/`` static mount."""
     paths = _route_paths(app)
     if "/figuresmith-bridge.js" in paths:
         return
 
     try:
-        from fastapi.responses import FileResponse, Response
+        from starlette.routing import Route
+        from starlette.responses import FileResponse, Response
     except ImportError:  # pragma: no cover
         return
 
-    bridge_path = (
-        Path(__file__).resolve().parent
-        / "figuresmith"
-        / "static"
-        / "desktop-bridge.js"
-    )
+    bridge_path = _static_dir() / "desktop-bridge.js"
     if not bridge_path.is_file():
         print(
             f"[FigureSmith] WARNING: desktop bridge missing at {bridge_path}",
@@ -111,15 +138,89 @@ def _mount_desktop_bridge(app) -> None:
         )
         return
 
-    @app.get("/figuresmith-bridge.js", include_in_schema=False)
-    def figuresmith_bridge_js() -> Response:
+    async def figuresmith_bridge_js(request):  # noqa: ARG001
         return FileResponse(
             bridge_path,
             media_type="application/javascript; charset=utf-8",
             filename="figuresmith-bridge.js",
         )
 
+    _insert_route_before_catch_all(
+        app,
+        Route("/figuresmith-bridge.js", figuresmith_bridge_js, methods=["GET"]),
+    )
     print("[FigureSmith] mounted /figuresmith-bridge.js (Phase 4 desktop bridge)")
+
+
+def _mount_figuresmith_ui(app) -> None:
+    """Serve welcome/models pages and shared FS assets with priority over vendor web."""
+    try:
+        from starlette.routing import Route
+        from starlette.responses import FileResponse, Response
+    except ImportError:  # pragma: no cover
+        return
+
+    ui = _ui_dir()
+    static = _static_dir()
+    if not ui.is_dir():
+        print(f"[FigureSmith] WARNING: UI dir missing at {ui}", file=sys.stderr)
+        return
+
+    def _file_endpoint(path: Path, media_type: str):
+        async def endpoint(request):  # noqa: ARG001
+            if not path.is_file():
+                return Response("Not found", status_code=404)
+            return FileResponse(path, media_type=media_type)
+
+        return endpoint
+
+    # Page map: URL path → file under static/ui or static/
+    page_files = {
+        "/welcome.html": (ui / "welcome.html", "text/html; charset=utf-8"),
+        "/models.html": (ui / "models.html", "text/html; charset=utf-8"),
+        "/fs/welcome.css": (ui / "welcome.css", "text/css; charset=utf-8"),
+        "/fs/models.css": (ui / "models.css", "text/css; charset=utf-8"),
+        "/fs/welcome.js": (ui / "welcome.js", "application/javascript; charset=utf-8"),
+        "/fs/models.js": (ui / "models.js", "application/javascript; charset=utf-8"),
+        "/fs/common.css": (ui / "common.css", "text/css; charset=utf-8"),
+        "/fs/common.js": (ui / "common.js", "application/javascript; charset=utf-8"),
+        "/fs/brand-mark.svg": (ui / "brand-mark.svg", "image/svg+xml"),
+    }
+
+    existing = _route_paths(app)
+    mounted = 0
+    for url, (path, media) in page_files.items():
+        if url in existing:
+            continue
+        if not path.is_file():
+            # Allow partial UI during development; warn once per missing file.
+            print(
+                f"[FigureSmith] WARNING: UI asset missing: {path}",
+                file=sys.stderr,
+            )
+            continue
+        _insert_route_before_catch_all(
+            app,
+            Route(url, _file_endpoint(path, media), methods=["GET"]),
+        )
+        mounted += 1
+
+    # Optional: also expose brand-override helpers if present
+    for name, media in (
+        ("brand-override.js", "application/javascript; charset=utf-8"),
+        ("brand-override.css", "text/css; charset=utf-8"),
+    ):
+        path = static / name
+        url = f"/fs/{name}"
+        if path.is_file() and url not in existing:
+            _insert_route_before_catch_all(
+                app,
+                Route(url, _file_endpoint(path, media), methods=["GET"]),
+            )
+            mounted += 1
+
+    if mounted:
+        print(f"[FigureSmith] mounted {mounted} Phase 5 UI asset route(s)")
 
 
 def _install_security(app) -> None:
@@ -221,12 +322,15 @@ def main(argv: list[str] | None = None) -> None:
     token_set = bool(os.environ.get("FIGURESMITH_SESSION_TOKEN", "").strip())
     auth_disabled = env_flag_true("FIGURESMITH_DISABLE_AUTH", default=False)
 
-    print("--- FigureSmith backend (Phase 4) ---")
+    print("--- FigureSmith backend (Phase 5) ---")
     print(f"Vendor root : {vendor_root}")
     print(f"Uvicorn app : {get_vendor_server_module_hint()}")
     print(f"Local URL   : http://{args.host}:{args.port}/")
+    print(f"Welcome     : http://{args.host}:{args.port}/welcome.html")
+    print(f"Models UI   : http://{args.host}:{args.port}/models.html")
     print(f"Health      : http://{args.host}:{args.port}/healthz")
     print(f"Models API  : http://{args.host}:{args.port}/api/models")
+    print(f"System API  : http://{args.host}:{args.port}/api/system/status")
     print(f"Shutdown    : POST http://{args.host}:{args.port}/api/shutdown")
     print("Bind policy : 127.0.0.1 only (recommended)")
     print(f"Strict off. : {strict}")

@@ -14,6 +14,12 @@ from figuresmith.security.offline import (
     is_strict_offline_enabled,
     validate_offline_endpoint,
 )
+from figuresmith.security.redact import (
+    redact_home_paths,
+    redact_log_line,
+    redact_mapping,
+    redact_secrets_text,
+)
 
 __all__ = [
     "SessionTokenMiddleware",
@@ -24,6 +30,10 @@ __all__ = [
     "is_auth_enabled",
     "is_loopback_host",
     "is_strict_offline_enabled",
+    "redact_home_paths",
+    "redact_log_line",
+    "redact_mapping",
     "redact_secrets",
+    "redact_secrets_text",
     "validate_offline_endpoint",
 ]

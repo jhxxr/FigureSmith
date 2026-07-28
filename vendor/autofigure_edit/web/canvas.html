@@ -3,17 +3,22 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>AutoFigure-Edit Canvas</title>
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!-- FIGURESMITH-BEGIN phase5-brand -->
+    <title>FigureSmith — Canvas</title>
+    <link rel="icon" href="/fs/brand-mark.svg" type="image/svg+xml" />
+    <!-- FIGURESMITH-END phase5-brand -->
     <link rel="stylesheet" href="/styles.css" />
+    <script src="/figuresmith-bridge.js"></script>
   </head>
   <body data-page="canvas">
     <div class="canvas-page">
       <header class="topbar">
         <div>
           <div class="brand">
-            <img class="brand-logo" src="/favicon.svg" alt="DeepScientist logo" />
-            <span id="canvasBrandTitle">AutoFigure-Edit Canvas</span>
+            <!-- FIGURESMITH-BEGIN phase5-brand -->
+            <img class="brand-logo" src="/fs/brand-mark.svg" alt="FigureSmith" />
+            <span id="canvasBrandTitle">FigureSmith Canvas</span>
+            <!-- FIGURESMITH-END phase5-brand -->
           </div>
           <div class="subtitle">
             <span id="canvasStatusLabel">Status:</span> <span id="statusText">Waiting</span>
@@ -21,7 +26,10 @@
         </div>
         <div class="topbar-actions">
           <button class="ghost" id="backToConfigBtn">Back to Config</button>
+          <!-- FIGURESMITH-BEGIN phase5-nav -->
+          <a class="ghost topbar-link" id="canvasModelsBtn" href="/models.html">Models</a>
           <a class="ghost topbar-link history-action" id="canvasHistoryBtn" href="/history.html">History</a>
+          <!-- FIGURESMITH-END phase5-nav -->
           <button class="ghost" id="logToggle">Logs</button>
           <div class="lang-switch" data-lang-switch>
             <button type="button" class="lang-chip" data-lang="zh">中文</button>

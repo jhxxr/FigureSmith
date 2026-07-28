@@ -68,3 +68,24 @@ Phase 3: SAM3/RMBG import manager with staging/atomic promote, Zip Slip+bomb gua
 ### Status
 
 [OK] **Completed**
+
+
+## Session 4: FigureSmith Phase 4 Tauri sidecar
+
+**Date**: 2026-07-28
+**Task**: FigureSmith Phase 4 Tauri sidecar
+**Branch**: `master`
+
+### Summary
+
+Phase 4: Tauri 2 desktop shell, loopback Python sidecar, Bearer session token auth, native model import commands, shutdown cleanup. 186 tests. Commit e37ec65. Next: Phase 5 desktop UX.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e37ec65` | (see git log) |
+
+### Status
+
+[OK] **Completed**

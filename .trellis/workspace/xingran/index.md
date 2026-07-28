@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 3
-- **Last Active**: 2026-07-27
+- **Total Sessions**: 4
+- **Last Active**: 2026-07-28
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~70 | Active |
+| `journal-1.md` | ~91 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 4 | 2026-07-28 | FigureSmith Phase 4 Tauri sidecar | `e37ec65` | `master` |
 | 3 | 2026-07-27 | FigureSmith Phase 3 model manager | `858245a` | `master` |
 | 2 | 2026-07-27 | FigureSmith Phase 2 local models | `b5a5d6c` | `master` |
 | 1 | 2026-07-27 | FigureSmith Phase 1 scaffold | `ac9e9f9` | `master` |

@@ -89,3 +89,24 @@ Phase 4: Tauri 2 desktop shell, loopback Python sidecar, Bearer session token au
 ### Status
 
 [OK] **Completed**
+
+
+## Session 5: FigureSmith Phase 5 desktop UX
+
+**Date**: 2026-07-28
+**Task**: FigureSmith Phase 5 desktop UX
+**Branch**: `master`
+
+### Summary
+
+Phase 5: welcome wizard, models page, system status API, log redaction, FigureSmith brand + local-only SAM UI. 203 tests. Commit a5a4454. Ready for Phase 6 Windows packaging.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a5a4454` | (see git log) |
+
+### Status
+
+[OK] **Completed**

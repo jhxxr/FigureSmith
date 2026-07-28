@@ -131,3 +131,24 @@ Phase 6 complete: Runtime Pack + desktop dist scripts, weight exclusion, checksu
 ### Status
 
 [OK] **Completed**
+
+
+## Session 7: FigureSmith GitHub Actions packaging
+
+**Date**: 2026-07-28
+**Task**: FigureSmith GitHub Actions packaging
+**Branch**: `master`
+
+### Summary
+
+Phase 6 CI: added assert-no-weights.ps1, sync-version.ps1, extract-changelog.ps1, ci.yml, release-windows.yml. Tag v* now auto-builds and releases. 212 tests passed.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `63df3aa` | (see git log) |
+
+### Status
+
+[OK] **Completed**

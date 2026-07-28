@@ -142,14 +142,41 @@ def delete_rmbg(request: Request) -> dict[str, Any]:
         raise _http_error(exc) from exc
 
 
-def create_models_app(*, app_data_dir: Optional[Path] = None):
-    """Standalone FastAPI app with only model routes (tests / minimal server)."""
+def create_models_app(
+    *,
+    app_data_dir: Optional[Path] = None,
+    install_auth: bool = True,
+    install_system: bool = False,
+):
+    """Standalone FastAPI app with model routes (tests / minimal server).
+
+    Args:
+        app_data_dir: Override app data root for ModelManager.
+        install_auth: Attach session-token middleware (no-ops when auth off).
+        install_system: Also mount ``POST /api/shutdown`` (Phase 4 tests).
+    """
     from fastapi import FastAPI
 
-    app = FastAPI(title="FigureSmith Model Manager", version="0.3.0")
+    from figuresmith.security.auth import install_auth_middleware
+
+    app = FastAPI(title="FigureSmith Model Manager", version="0.4.0")
     if app_data_dir is not None:
         app.state.figuresmith_app_data_dir = str(app_data_dir)
     app.include_router(router)
+
+    if install_system:
+        from figuresmith.api.system_routes import mount_system_routes
+
+        mount_system_routes(app)
+
+    if install_auth:
+        install_auth_middleware(app)
+
+    # Public health for auth tests / sidecar-like probes.
+    @app.get("/healthz")
+    def _healthz() -> dict[str, str]:
+        return {"status": "ok"}
+
     return app
 
 

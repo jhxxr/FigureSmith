@@ -2,6 +2,27 @@
 
 All notable changes to FigureSmith are documented in this file.
 
+## [0.4.0] — 2026-07-27
+
+### Phase 4 — Tauri desktop shell + Python sidecar
+
+- Scaffold Tauri 2 app under `apps/desktop/` (productName **FigureSmith**, identifier `app.figuresmith.desktop`).
+- Spawn Python sidecar on **127.0.0.1** with free port, `FIGURESMITH_SESSION_TOKEN`, and strict offline env.
+- Add Bearer session-token middleware for `/api/*` (`figuresmith/security/auth.py`); `/healthz` remains public.
+- Add `POST /api/shutdown` for graceful sidecar exit; Tauri force-kills process tree on timeout.
+- Add Tauri commands: `get_session`, `import_sam3_model`, `import_rmbg_archive`, `import_rmbg_folder`, `open_models_directory`.
+- Inject in-memory session + `/figuresmith-bridge.js` fetch wrapper for vendor UI API calls.
+- Add `scripts/run-desktop.ps1` and implement `scripts/build-desktop.ps1` (no model weights).
+- Add auth/shutdown unit tests; `FIGURESMITH_DISABLE_AUTH=1` keeps Phase 3 TestClient suites green.
+- Document delivery in `docs/phase4-delivery.md`.
+
+### Known non-goals in this release
+
+- No full first-run wizard / hardware page polish (Phase 5).
+- No runtime pack / polished installer (Phase 6).
+- No macOS/Linux packaging commitment.
+- No model weights distributed in git.
+
 ## [0.3.0] — 2026-07-27
 
 ### Phase 3 — Model manager (import / verify / delete / rollback)

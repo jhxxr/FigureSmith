@@ -1,0 +1,23 @@
+{
+  "name": "figuresmith-desktop",
+  "private": true,
+  "version": "0.4.0",
+  "type": "module",
+  "description": "FigureSmith / 图匠 desktop shell (Tauri 2 + Python sidecar)",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-dialog": "^2.7.2",
+    "@tauri-apps/plugin-opener": "^2.5.3"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5"
+  }
+}

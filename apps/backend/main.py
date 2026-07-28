@@ -9,6 +9,10 @@ from the local registry before importing heavy vendor stacks.
 Phase 3: mounts ``/api/models/*`` model manager routes (local path import,
 verify, delete) onto the vendor app without rewriting vendor server.py.
 
+Phase 4: optional Bearer session-token auth on ``/api/*`` when
+``FIGURESMITH_SESSION_TOKEN`` is set; ``POST /api/shutdown`` for desktop
+sidecar lifecycle; desktop-bridge static script for WebView fetch wrapping.
+
 Health check: GET /healthz
 Models API:   GET /api/models
 Default URL:  http://127.0.0.1:8765/
@@ -50,21 +54,93 @@ def _load_vendor_app():
     return vendor_server.app
 
 
+def _route_paths(app) -> set[str]:
+    return {str(getattr(r, "path", "") or "") for r in getattr(app, "routes", [])}
+
+
 def _mount_figuresmith_routes(app) -> None:
-    """Attach FigureSmith-owned API routers (Phase 3 model manager) to vendor app."""
+    """Attach FigureSmith-owned API routers to the vendor app."""
+    paths = _route_paths(app)
+
+    # Phase 3 model manager
     try:
         from figuresmith.api.models_routes import mount_models_routes
     except ImportError as exc:  # pragma: no cover
         print(f"[FigureSmith] WARNING: model routes unavailable: {exc}", file=sys.stderr)
+    else:
+        if "/api/models" not in paths and not any(
+            p.startswith("/api/models") for p in paths
+        ):
+            mount_models_routes(app)
+            print("[FigureSmith] mounted /api/models/* (Phase 3 model manager)")
+
+    # Phase 4 system routes (shutdown)
+    try:
+        from figuresmith.api.system_routes import mount_system_routes
+    except ImportError as exc:  # pragma: no cover
+        print(f"[FigureSmith] WARNING: system routes unavailable: {exc}", file=sys.stderr)
+    else:
+        mount_system_routes(app)
+        print("[FigureSmith] mounted /api/shutdown (Phase 4 lifecycle)")
+
+    # Desktop bridge script (fetch Authorization wrapper)
+    _mount_desktop_bridge(app)
+
+
+def _mount_desktop_bridge(app) -> None:
+    """Expose ``/figuresmith-bridge.js`` without conflicting with vendor ``/`` static."""
+    paths = _route_paths(app)
+    if "/figuresmith-bridge.js" in paths:
         return
-    # Avoid double-mount when reload/import runs twice.
-    existing = {getattr(r, "path", None) for r in getattr(app, "routes", [])}
-    if "/api/models" in existing or any(
-        str(getattr(r, "path", "")).startswith("/api/models") for r in getattr(app, "routes", [])
-    ):
+
+    try:
+        from fastapi.responses import FileResponse, Response
+    except ImportError:  # pragma: no cover
         return
-    mount_models_routes(app)
-    print("[FigureSmith] mounted /api/models/* (Phase 3 model manager)")
+
+    bridge_path = (
+        Path(__file__).resolve().parent
+        / "figuresmith"
+        / "static"
+        / "desktop-bridge.js"
+    )
+    if not bridge_path.is_file():
+        print(
+            f"[FigureSmith] WARNING: desktop bridge missing at {bridge_path}",
+            file=sys.stderr,
+        )
+        return
+
+    @app.get("/figuresmith-bridge.js", include_in_schema=False)
+    def figuresmith_bridge_js() -> Response:
+        return FileResponse(
+            bridge_path,
+            media_type="application/javascript; charset=utf-8",
+            filename="figuresmith-bridge.js",
+        )
+
+    print("[FigureSmith] mounted /figuresmith-bridge.js (Phase 4 desktop bridge)")
+
+
+def _install_security(app) -> None:
+    """Install session-token middleware (no-ops when token unset / auth disabled)."""
+    try:
+        from figuresmith.security.auth import install_auth_middleware, is_auth_enabled
+    except ImportError as exc:  # pragma: no cover
+        print(f"[FigureSmith] WARNING: auth middleware unavailable: {exc}", file=sys.stderr)
+        return
+
+    enabled = install_auth_middleware(app)
+    if enabled:
+        print(
+            "[FigureSmith] session token auth ENABLED for /api/* "
+            "(token not logged; set FIGURESMITH_DISABLE_AUTH=1 to bypass in tests)"
+        )
+    else:
+        print(
+            "[FigureSmith] session token auth disabled "
+            "(no FIGURESMITH_SESSION_TOKEN or FIGURESMITH_DISABLE_AUTH=1)"
+        )
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -131,6 +207,7 @@ def main(argv: list[str] | None = None) -> None:
     ensure_vendor_on_sys_path()
     app = _load_vendor_app()
     _mount_figuresmith_routes(app)
+    _install_security(app)
 
     try:
         import uvicorn
@@ -140,14 +217,23 @@ def main(argv: list[str] | None = None) -> None:
             "`pip install -r apps/backend/requirements.txt`."
         ) from exc
 
-    print("--- FigureSmith backend (Phase 3) ---")
+    # Never print the session token value.
+    token_set = bool(os.environ.get("FIGURESMITH_SESSION_TOKEN", "").strip())
+    auth_disabled = env_flag_true("FIGURESMITH_DISABLE_AUTH", default=False)
+
+    print("--- FigureSmith backend (Phase 4) ---")
     print(f"Vendor root : {vendor_root}")
     print(f"Uvicorn app : {get_vendor_server_module_hint()}")
     print(f"Local URL   : http://{args.host}:{args.port}/")
     print(f"Health      : http://{args.host}:{args.port}/healthz")
     print(f"Models API  : http://{args.host}:{args.port}/api/models")
+    print(f"Shutdown    : POST http://{args.host}:{args.port}/api/shutdown")
     print("Bind policy : 127.0.0.1 only (recommended)")
     print(f"Strict off. : {strict}")
+    print(
+        f"Auth mode   : "
+        f"{'disabled(bypass)' if auth_disabled else ('token' if token_set else 'off')}"
+    )
     print("--------------------------------")
 
     # Prefer importing the already-loaded app object so path setup is respected.

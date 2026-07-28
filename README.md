@@ -6,18 +6,17 @@ Local-first scientific figure generation, segmentation, vectorization, and SVG e
 
 > Chinese README: [README_ZH.md](./README_ZH.md)
 
-## Status (Phase 3)
+## Status (Phase 4)
 
-Phase 3 delivers a **safe local model manager** on top of Phase 2 load contracts:
+Phase 4 delivers a **Tauri 2 desktop shell** on top of Phase 3 model management:
 
-- Import SAM3 `.pt` and RMBG ZIP/folder into app data with staging + atomic promote
-- SHA-256 + optional official pin checks; pin mismatch rejects unless `FIGURESMITH_ALLOW_UNPINNED_MODELS=1`
-- Failed imports **roll back** and do not destroy a previously working pack
-- Lifecycle API: `GET/POST/DELETE /api/models…` (local absolute `source_path` only)
-- Dev CLI: `python -m figuresmith.models.cli`
-- Contract tests that pass **without GPU or multi-GB weight files**
+- Desktop app under `apps/desktop/` starts a local Python **sidecar** on **127.0.0.1**
+- One-time session token (memory/env only) protects `/api/*` with Bearer auth
+- Native file pickers for SAM3/RMBG import via Tauri commands/menu
+- Exit path: `POST /api/shutdown` + process-tree kill fallback
+- Browser-only backend still works via `./scripts/run-backend.ps1` (no token / optional `FIGURESMITH_DISABLE_AUTH=1` for tests)
 
-**Not yet:** Tauri shell / native picker UI (Phase 4), runtime pack/installer, or shipping model weights.
+**Not yet:** first-run wizard polish (Phase 5), runtime pack/installer (Phase 6), or shipping model weights.
 
 ### Local model environment variables
 
@@ -29,8 +28,11 @@ Phase 3 delivers a **safe local model manager** on top of Phase 2 load contracts
 | `FIGURESMITH_RMBG_MODEL_PATH` | Path to local RMBG-2.0 model directory |
 | `FIGURESMITH_DATA_DIR` | Optional app-data root override |
 | `FIGURESMITH_ALLOW_UNPINNED_MODELS` | Dev: allow imports that do not match official pins |
+| `FIGURESMITH_SESSION_TOKEN` | Desktop sidecar Bearer token (set by Tauri; do not commit) |
+| `FIGURESMITH_DISABLE_AUTH` | Test/dev bypass for auth middleware (`1` = off) |
+| `FIGURESMITH_PYTHON` | Optional Python interpreter for the desktop sidecar |
 
-See [docs/phase3-delivery.md](./docs/phase3-delivery.md), [docs/phase2-delivery.md](./docs/phase2-delivery.md), and [docs/development.md](./docs/development.md).
+See [docs/phase4-delivery.md](./docs/phase4-delivery.md), [docs/phase3-delivery.md](./docs/phase3-delivery.md), and [docs/development.md](./docs/development.md).
 
 ## Relationship to AutoFigure-Edit
 
@@ -60,11 +62,14 @@ This repository does **not** include SAM3/RMBG (or other) model weights. Review 
 # 2) Optional: configure OpenAI-compatible keys
 copy .env.example .env
 
-# 3) Run backend (loopback only)
+# 3a) Backend only (browser)
 ./scripts/run-backend.ps1
+
+# 3b) Desktop shell (Tauri + sidecar) — requires Rust + Node + WebView2
+./scripts/run-desktop.ps1
 ```
 
-Then open:
+Then open (backend-only):
 
 - UI: http://127.0.0.1:8765/
 - Health: http://127.0.0.1:8765/healthz
@@ -84,20 +89,22 @@ Do not expose the service on public interfaces for normal use.
 FigureSmith/
 ├── apps/
 │   ├── backend/           # figuresmith package + main.py
-│   └── desktop/           # Tauri placeholder (Phase 4)
+│   └── desktop/           # Tauri 2 shell (Phase 4)
 ├── vendor/
 │   ├── autofigure_edit/   # AutoFigure-Edit baseline
 │   └── svg_edit/          # svg-edit boundary copy
 ├── resources/             # model-manifest shell, licenses, notices
-├── scripts/               # setup-dev, run-backend, future build/verify stubs
-├── docs/                  # development, licenses, phase1 delivery
-└── tests/                 # smoke tests
+├── scripts/               # setup-dev, run-backend, run-desktop, build-desktop
+├── docs/                  # development, licenses, phase delivery notes
+└── tests/                 # contract + auth tests
 ```
 
 ## Development docs
 
 - [docs/development.md](./docs/development.md) — setup, run, model paths, import, tests
+- [docs/phase4-delivery.md](./docs/phase4-delivery.md) — Phase 4 Tauri + sidecar delivery
 - [docs/phase3-delivery.md](./docs/phase3-delivery.md) — Phase 3 model manager delivery
+- [apps/desktop/README.md](./apps/desktop/README.md) — desktop prerequisites
 - [docs/phase2-delivery.md](./docs/phase2-delivery.md) — Phase 2 file list, commands, limits
 - [docs/phase1-delivery.md](./docs/phase1-delivery.md) — Phase 1 file list and limits
 - [docs/licenses.md](./docs/licenses.md) — license map

@@ -7,7 +7,7 @@ def test_figuresmith_import_and_version() -> None:
     import figuresmith
 
     assert hasattr(figuresmith, "__version__")
-    assert figuresmith.__version__ == "0.3.0"
+    assert figuresmith.__version__ == "0.4.0"
 
 
 def test_vendor_bridge_paths() -> None:

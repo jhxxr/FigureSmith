@@ -8,7 +8,10 @@ import socket
 from typing import Iterable, Optional
 from urllib.parse import urlparse
 
-from figuresmith.models.errors import OfflineEndpointForbidden
+# NOTE: Do not import figuresmith.models at module top-level.
+# models.manifest → security.offline, and models/__init__ pulls manager →
+# a top-level models import here creates an order-dependent circular import
+# when auth is loaded first (figuresmith.security.auth → offline → models).
 
 # Environment keys set when strict offline is active.
 OFFLINE_ENV_KEYS = (
@@ -169,6 +172,9 @@ def validate_offline_endpoint(base_url: str, *, resolve_dns: bool = False) -> No
         OfflineEndpointForbidden: if the URL host is missing or non-loopback.
         ValueError: if the URL cannot be parsed.
     """
+    # Lazy import avoids circular dependency with figuresmith.models package init.
+    from figuresmith.models.errors import OfflineEndpointForbidden
+
     if base_url is None or not str(base_url).strip():
         raise OfflineEndpointForbidden(detail="empty base_url")
 

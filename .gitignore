@@ -63,8 +63,9 @@ Thumbs.db
 desktop.ini
 $RECYCLE.BIN/
 
-# Node (if added later)
+# Node (desktop)
 node_modules/
+apps/desktop/dist/
 
 # Packaging / installers
 *.msi
@@ -73,6 +74,9 @@ node_modules/
 *.AppImage
 runtime-pack/
 dist-desktop/
+
+# Tauri / Rust build outputs
+apps/desktop/src-tauri/target/
 
 # Local model import staging
 resources/models/

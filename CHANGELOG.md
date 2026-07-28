@@ -2,6 +2,15 @@
 
 All notable changes to FigureSmith are documented in this file.
 
+## [0.6.1] — 2026-07-28
+
+### Data directory default (install-local)
+
+- Default imported models/settings now prefer **`<install or repo>/data`** (same drive as the app) instead of always using `%LOCALAPPDATA%` on C:.
+- Desktop sidecar sets `FIGURESMITH_DATA_DIR` next to `FigureSmith.exe` when unset.
+- Still falls back to `%LOCALAPPDATA%\FigureSmith` if the install folder is not writable (e.g. Program Files without admin).
+- Override anytime with `FIGURESMITH_DATA_DIR`.
+
 ## [0.6.0] — 2026-07-28
 
 ### Phase 6 — Windows packaging & release tooling

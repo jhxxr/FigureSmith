@@ -122,3 +122,43 @@ def test_export_path_env(tmp_path: Path) -> None:
 def test_get_app_data_dir_honors_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("FIGURESMITH_DATA_DIR", str(tmp_path / "custom-data"))
     assert get_app_data_dir() == (tmp_path / "custom-data").resolve()
+
+
+def test_get_app_data_dir_uses_install_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Prefer <install_root>/data over LOCALAPPDATA when install root is writable."""
+    monkeypatch.delenv("FIGURESMITH_DATA_DIR", raising=False)
+    install = tmp_path / "InstallFigureSmith"
+    install.mkdir()
+    monkeypatch.setenv("FIGURESMITH_INSTALL_ROOT", str(install))
+    # Avoid accidental LOCALAPPDATA pollution assertions by ensuring install wins.
+    got = get_app_data_dir()
+    assert got == (install / "data").resolve()
+    assert got.is_dir()
+
+
+def test_get_app_data_dir_falls_back_when_install_not_writable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """If install data dir cannot be created, fall back to LOCALAPPDATA-style path."""
+    monkeypatch.delenv("FIGURESMITH_DATA_DIR", raising=False)
+    monkeypatch.delenv("FIGURESMITH_INSTALL_ROOT", raising=False)
+
+    # Point LOCALAPPDATA to temp so we don't touch the real profile.
+    fake_local = tmp_path / "LocalAppData"
+    fake_local.mkdir()
+    monkeypatch.setenv("LOCALAPPDATA", str(fake_local))
+
+    # Force install root to a non-writable path by mocking _ensure_writable_dir
+    # via an install root on a fake unwritable tree: use a file path as "root".
+    blocked = tmp_path / "blocked-file"
+    blocked.write_text("x", encoding="utf-8")
+    monkeypatch.setenv("FIGURESMITH_INSTALL_ROOT", str(blocked))
+
+    # Also prevent repo_root/data from winning if the monorepo is writable —
+    # monkeypatch _find_repo_root to None for this test.
+    import figuresmith.models.paths as paths_mod
+
+    monkeypatch.setattr(paths_mod, "_find_repo_root", lambda: None)
+
+    got = get_app_data_dir()
+    assert got == (fake_local / "FigureSmith").resolve()

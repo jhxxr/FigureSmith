@@ -86,9 +86,20 @@ impl SidecarState {
             // Ensure tests/dev bypass does not leak into desktop child.
             .env_remove("FIGURESMITH_DISABLE_AUTH");
 
+        // Data dir: prefer explicit env; otherwise store next to the desktop
+        // executable (install/portable location) so large models are not forced
+        // onto %LOCALAPPDATA% on C:.
         if let Ok(data_dir) = std::env::var("FIGURESMITH_DATA_DIR") {
             if !data_dir.trim().is_empty() {
                 cmd.env("FIGURESMITH_DATA_DIR", data_dir);
+            }
+        } else if let Ok(exe) = std::env::current_exe() {
+            if let Some(parent) = exe.parent() {
+                let data = parent.join("data");
+                cmd.env("FIGURESMITH_DATA_DIR", data.as_os_str());
+                if let Some(root) = parent.to_str() {
+                    cmd.env("FIGURESMITH_INSTALL_ROOT", root);
+                }
             }
         }
 

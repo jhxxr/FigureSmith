@@ -110,3 +110,24 @@ Phase 5: welcome wizard, models page, system status API, log redaction, FigureSm
 ### Status
 
 [OK] **Completed**
+
+
+## Session 6: FigureSmith Phase 6 Windows packaging
+
+**Date**: 2026-07-28
+**Task**: FigureSmith Phase 6 Windows packaging
+**Branch**: `master`
+
+### Summary
+
+Phase 6 complete: Runtime Pack + desktop dist scripts, weight exclusion, checksums, release docs, CI draft. VERSION 0.6.0. 212 tests. Full FigureSmith phases 1-6 delivered.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `13e5776` | (see git log) |
+
+### Status
+
+[OK] **Completed**

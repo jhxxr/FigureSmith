@@ -6,17 +6,18 @@ Local-first scientific figure generation, segmentation, vectorization, and SVG e
 
 > Chinese README: [README_ZH.md](./README_ZH.md)
 
-## Status (Phase 5)
+## Status (Phase 6)
 
-Phase 5 delivers **desktop UX** on top of the Phase 4 Tauri sidecar:
+Phase 6 adds **Windows packaging tooling** on top of the Phase 5 desktop UX:
 
-- Welcome / first-run wizard (`/welcome.html`) and models page (`/models.html`)
-- `GET /api/system/status` hardware + model probe (safe without CUDA)
-- Create/import UI branded **FigureSmith**; SAM fixed to **Local SAM3** (no fal/Roboflow options, no HF_TOKEN field)
-- Log redaction helpers for secrets and home paths
-- Desktop app under `apps/desktop/` still starts a local Python sidecar on **127.0.0.1** with session token auth
+- `./scripts/build-runtime.ps1` — Runtime Pack **without model weights**
+- `./scripts/build-desktop.ps1` — Setup/Portable outputs under `dist-desktop/`
+- `./scripts/write-checksums.ps1` — SHA-256 `checksums.txt`
+- Release docs: [docs/phase6-delivery.md](./docs/phase6-delivery.md), [docs/release.md](./docs/release.md)
 
-**Not yet:** runtime pack/installer (Phase 6), or shipping model weights.
+Also includes welcome/models UX, local-only SAM UI, Tauri sidecar on **127.0.0.1**, and session token auth.
+
+**Not shipped in git/releases:** model weights (`sam3.pt`, RMBG safetensors, etc.).
 
 ### Local model environment variables
 
@@ -32,7 +33,7 @@ Phase 5 delivers **desktop UX** on top of the Phase 4 Tauri sidecar:
 | `FIGURESMITH_DISABLE_AUTH` | Test/dev bypass for auth middleware (`1` = off) |
 | `FIGURESMITH_PYTHON` | Optional Python interpreter for the desktop sidecar |
 
-See [docs/phase5-delivery.md](./docs/phase5-delivery.md), [docs/phase4-delivery.md](./docs/phase4-delivery.md), and [docs/development.md](./docs/development.md).
+See [docs/development.md](./docs/development.md).
 
 ## Relationship to AutoFigure-Edit
 

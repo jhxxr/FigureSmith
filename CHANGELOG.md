@@ -2,6 +2,25 @@
 
 All notable changes to FigureSmith are documented in this file.
 
+## [0.6.0] — 2026-07-28
+
+### Phase 6 — Windows packaging & release tooling
+
+- Add root `VERSION` and align package/desktop version to **0.6.0**.
+- Implement `scripts/build-runtime.ps1` Runtime Pack (app code + deps scripts, **no weights**).
+- Extend `scripts/build-desktop.ps1` to publish `dist-desktop/` Setup/Portable naming + checksums (`-SkipBuild` supported).
+- Add `scripts/write-checksums.ps1` (SHA-256).
+- Add `figuresmith.runtime.packaging` weight-exclusion helpers + unit tests.
+- Add `docs/phase6-delivery.md`, `docs/release.md`, and draft `.github/workflows/release-windows.yml`.
+- Gitignore `dist-runtime/` (and existing `dist-desktop/`).
+
+### Known non-goals in this release
+
+- No model weights in any artifact.
+- No mandatory code signing.
+- No macOS/Linux installers.
+- Full Tauri installer binary still requires a local/CI `tauri build`.
+
 ## [0.5.0] — 2026-07-28
 
 ### Phase 5 — Desktop UX (wizard / models / local SAM UI)

@@ -74,6 +74,7 @@ apps/desktop/dist/
 *.AppImage
 runtime-pack/
 dist-desktop/
+dist-runtime/
 
 # Tauri / Rust build outputs
 apps/desktop/src-tauri/target/

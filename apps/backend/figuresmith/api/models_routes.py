@@ -159,7 +159,7 @@ def create_models_app(
 
     from figuresmith.security.auth import install_auth_middleware
 
-    app = FastAPI(title="FigureSmith Model Manager", version="0.5.0")
+    app = FastAPI(title="FigureSmith Model Manager", version="0.6.0")
     if app_data_dir is not None:
         app.state.figuresmith_app_data_dir = str(app_data_dir)
     app.include_router(router)

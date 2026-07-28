@@ -1,15 +1,9 @@
 """FigureSmith backend package (图匠).
 
-Phase 3 adds safe local model import/verify/delete (staging + pin policy) on top
-of Phase 2 local load contracts and strict offline controls.
-
-Phase 4 adds optional Bearer session-token auth for ``/api/*`` and
-``POST /api/shutdown`` for the Tauri desktop sidecar lifecycle.
-
-Phase 5 adds desktop UX: system status API, onboarding flag, welcome/models
-static pages, vendor brand/SAM convergence, and log redaction helpers.
+Phase 3–5: local models, auth/sidecar, desktop UX.
+Phase 6: Windows packaging helpers (weight-exclusion for Runtime/desktop dist).
 """
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 __all__ = ["__version__"]

@@ -1,0 +1,77 @@
+# FigureSmith Windows release (draft)
+#
+# Manual workflow_dispatch to avoid expensive default CI minutes.
+# Never cache or upload model weight directories.
+
+name: release-windows
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_tauri_build:
+        description: "Skip tauri build (packaging scripts only)"
+        required: false
+        default: "false"
+  # push:
+  #   tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Python tests
+        shell: bash
+        run: |
+          pip install -r apps/backend/requirements.txt
+          export PYTHONPATH="apps/backend;vendor/autofigure_edit"
+          python -m pytest tests -q
+
+      - name: Build Runtime Pack
+        shell: pwsh
+        run: ./scripts/build-runtime.ps1 -SkipZip:$false
+
+      - name: Setup Node
+        if: ${{ inputs.skip_tauri_build != 'true' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Setup Rust
+        if: ${{ inputs.skip_tauri_build != 'true' }}
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Desktop
+        if: ${{ inputs.skip_tauri_build != 'true' }}
+        shell: pwsh
+        run: ./scripts/build-desktop.ps1
+
+      - name: Package Desktop without full build
+        if: ${{ inputs.skip_tauri_build == 'true' }}
+        shell: pwsh
+        run: ./scripts/build-desktop.ps1 -SkipBuild
+
+      - name: Upload dist-runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: figuresmith-runtime
+          path: dist-runtime/
+          if-no-files-found: warn
+
+      - name: Upload dist-desktop
+        uses: actions/upload-artifact@v4
+        with:
+          name: figuresmith-desktop
+          path: dist-desktop/
+          if-no-files-found: warn

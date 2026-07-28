@@ -1,0 +1,72 @@
+# Lightweight CI for PRs and default-branch pushes.
+# Does NOT run full Tauri desktop builds (those are release-windows only).
+
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: pytest
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: apps/backend/requirements.txt
+
+      - name: Install deps
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r apps/backend/requirements.txt
+
+      - name: Pytest
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = "apps/backend;vendor/autofigure_edit"
+          $env:FIGURESMITH_DISABLE_AUTH = "1"
+          python -m pytest tests -q
+
+  runtime-pack-smoke:
+    name: runtime-pack-smoke
+    needs: test
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build runtime pack (no weights)
+        shell: pwsh
+        run: ./scripts/build-runtime.ps1 -SkipZip
+
+      - name: Assert no weights
+        shell: pwsh
+        run: ./scripts/ci/assert-no-weights.ps1 -Path dist-runtime
+
+      - name: Upload smoke artifact (optional)
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-smoke
+          path: |
+            dist-runtime/**/MANIFEST.json
+            dist-runtime/checksums.txt
+          if-no-files-found: warn
+          retention-days: 7

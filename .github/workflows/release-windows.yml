@@ -1,27 +1,48 @@
-# FigureSmith Windows release (draft)
+# FigureSmith — Windows release (automatic packaging + GitHub Release)
 #
-# Manual workflow_dispatch to avoid expensive default CI minutes.
-# Never cache or upload model weight directories.
+# Triggers:
+#   - push tag v*     → test → runtime + desktop packs → GitHub Release
+#   - workflow_dispatch → manual trial (optional skip desktop / create release)
+#
+# Hard rule: never upload model weights (*.pt, *.safetensors, …).
 
 name: release-windows
 
 on:
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
-      skip_tauri_build:
-        description: "Skip tauri build (packaging scripts only)"
-        required: false
-        default: "false"
-  # push:
-  #   tags: ["v*"]
+      skip_desktop:
+        description: "Skip Tauri desktop build (runtime-only)"
+        type: boolean
+        default: false
+      create_release:
+        description: "Create GitHub Release even on manual run (non-tag)"
+        type: boolean
+        default: false
+      cuda_tag:
+        description: "Runtime CUDA tag label (e.g. cu128)"
+        type: string
+        default: "cu128"
 
 permissions:
   contents: read
 
+concurrency:
+  group: release-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20"
+
 jobs:
-  package:
+  test:
+    name: test
     runs-on: windows-latest
-    timeout-minutes: 180
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,49 +50,244 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: apps/backend/requirements.txt
 
-      - name: Python tests
-        shell: bash
+      - name: Install backend test deps
+        shell: pwsh
         run: |
+          python -m pip install --upgrade pip
+          # Contract tests do not need full CUDA torch; install declared requirements.
           pip install -r apps/backend/requirements.txt
-          export PYTHONPATH="apps/backend;vendor/autofigure_edit"
+
+      - name: Assert tag matches VERSION (tag builds only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: ./scripts/ci/assert-version-tag.ps1
+
+      - name: Run pytest
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = "apps/backend;vendor/autofigure_edit"
+          $env:FIGURESMITH_DISABLE_AUTH = "1"
           python -m pytest tests -q
+
+  package-runtime:
+    name: package-runtime
+    needs: test
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Build Runtime Pack
         shell: pwsh
-        run: ./scripts/build-runtime.ps1 -SkipZip:$false
+        run: |
+          $cuda = "${{ github.event.inputs.cuda_tag }}"
+          if ([string]::IsNullOrWhiteSpace($cuda)) { $cuda = "cu128" }
+          ./scripts/build-runtime.ps1 -CudaTag $cuda
 
-      - name: Setup Node
-        if: ${{ inputs.skip_tauri_build != 'true' }}
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Setup Rust
-        if: ${{ inputs.skip_tauri_build != 'true' }}
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Build Desktop
-        if: ${{ inputs.skip_tauri_build != 'true' }}
+      - name: Assert no model weights
         shell: pwsh
-        run: ./scripts/build-desktop.ps1
+        run: ./scripts/ci/assert-no-weights.ps1 -Path dist-runtime
 
-      - name: Package Desktop without full build
-        if: ${{ inputs.skip_tauri_build == 'true' }}
-        shell: pwsh
-        run: ./scripts/build-desktop.ps1 -SkipBuild
-
-      - name: Upload dist-runtime
+      - name: Upload runtime artifacts
         uses: actions/upload-artifact@v4
         with:
           name: figuresmith-runtime
-          path: dist-runtime/
-          if-no-files-found: warn
+          path: |
+            dist-runtime/*.zip
+            dist-runtime/checksums.txt
+            dist-runtime/**/MANIFEST.json
+            dist-runtime/**/README-RUNTIME.md
+          if-no-files-found: error
+          retention-days: 14
 
-      - name: Upload dist-desktop
+  package-desktop:
+    name: package-desktop
+    needs: test
+    if: ${{ github.event_name == 'push' || inputs.skip_desktop == false }}
+    runs-on: windows-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust / Tauri target
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri -> target
+          shared-key: figuresmith-tauri-windows
+
+      - name: Sync version from VERSION file
+        shell: pwsh
+        run: ./scripts/ci/sync-version.ps1
+
+      - name: Install desktop npm deps
+        working-directory: apps/desktop
+        shell: pwsh
+        run: |
+          if (Test-Path package-lock.json) { npm ci } else { npm install }
+
+      - name: Build desktop packages
+        shell: pwsh
+        run: ./scripts/build-desktop.ps1
+        env:
+          # Reduce noise; Tauri may need CI=true
+          CI: "true"
+
+      - name: Assert no model weights
+        shell: pwsh
+        run: ./scripts/ci/assert-no-weights.ps1 -Path dist-desktop
+
+      - name: Upload desktop artifacts
         uses: actions/upload-artifact@v4
         with:
           name: figuresmith-desktop
-          path: dist-desktop/
-          if-no-files-found: warn
+          path: |
+            dist-desktop/FigureSmith-*.exe
+            dist-desktop/FigureSmith-*.msi
+            dist-desktop/FigureSmith-Portable-*.zip
+            dist-desktop/checksums.txt
+            dist-desktop/**/README-PORTABLE.md
+            dist-desktop/**/BUILD_INSTRUCTIONS.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: github-release
+    needs: [package-runtime, package-desktop]
+    # On manual skip_desktop, package-desktop is skipped — allow release of runtime-only when create_release or tag.
+    if: |
+      always() &&
+      needs.package-runtime.result == 'success' &&
+      (needs.package-desktop.result == 'success' || needs.package-desktop.result == 'skipped') &&
+      (
+        startsWith(github.ref, 'refs/tags/v') ||
+        (github.event_name == 'workflow_dispatch' && inputs.create_release == true)
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download runtime artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: figuresmith-runtime
+          path: release-assets/runtime
+
+      - name: Download desktop artifacts
+        if: needs.package-desktop.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: figuresmith-desktop
+          path: release-assets/desktop
+
+      - name: Resolve version + release notes
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="v$(tr -d ' \n\r' < VERSION)"
+          fi
+          VER="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          # extract-changelog is PowerShell; use python fallback on ubuntu for notes
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, re
+          ver = os.environ.get("VER") or Path("VERSION").read_text(encoding="utf-8").strip()
+          text = Path("CHANGELOG.md").read_text(encoding="utf-8")
+          pat = rf"(?ms)^## \[{re.escape(ver)}\].*?(?=^## \[|\Z)"
+          m = re.search(pat, text)
+          body = m.group(0).strip() if m else f"## FigureSmith v{ver}\n\nAutomated release. See CHANGELOG.md."
+          notes = (
+              f"FigureSmith **v{ver}** automatic release.\n\n{body}\n\n"
+              "---\n\n"
+              "**Model weights are not included.** Import SAM3 / RMBG after install.\n"
+              "Source license ≠ third-party model weight licenses.\n"
+          )
+          Path("release-notes.md").write_text(notes, encoding="utf-8")
+          print(f"Wrote release-notes.md for {ver}")
+          PY
+        env:
+          VER: ${{ steps.meta.outputs.version }}
+
+      - name: Collect asset files
+        id: assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p upload
+          # Flatten zips/exe/msi/checksums into upload/
+          find release-assets -type f \( \
+            -name '*.zip' -o -name '*.exe' -o -name '*.msi' -o -name 'checksums.txt' -o -name 'MANIFEST.json' \
+          \) -print0 | while IFS= read -r -d '' f; do
+            base="$(basename "$f")"
+            # avoid overwrite: prefix if needed
+            dest="upload/$base"
+            if [[ -e "$dest" ]]; then
+              dest="upload/$(echo "$f" | sed 's#release-assets/##;s#/#_#g')"
+            fi
+            cp -v "$f" "$dest"
+          done
+          ls -la upload
+          # Build multiline file list for softprops
+          {
+            echo "files<<EOF"
+            find upload -type f | sort
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Re-assert no weights in upload folder
+        shell: bash
+        run: |
+          set -euo pipefail
+          if find upload -type f \( \
+              -iname '*.pt' -o -iname '*.pth' -o -iname '*.onnx' -o -iname '*.safetensors' \
+              -o -iname '*.gguf' -o -iname '*.ckpt' -o -iname '*.h5' -o -iname '*.pb' \
+            \) | grep -q .; then
+            echo "ERROR: weight-like files in upload/"
+            find upload -type f | sort
+            exit 1
+          fi
+          echo "OK: upload/ has no weight extensions"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: FigureSmith v${{ steps.meta.outputs.version }}
+          body_path: release-notes.md
+          draft: false
+          prerelease: ${{ contains(steps.meta.outputs.version, '-') }}
+          fail_on_unmatched_files: false
+          files: |
+            upload/**
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

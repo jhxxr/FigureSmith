@@ -3,7 +3,7 @@
   "name": "runtime-contract-dependency-locks",
   "title": "Runtime contract and dependency locks",
   "description": "Freeze the Windows runtime schema, exact CPython/SAM3/cu128 sources, hashed dependencies, licenses, and measured size.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

@@ -2,7 +2,7 @@
 
 - [ ] Inventory imported runtime modules, native libraries, SAM3 assets, and
       direct versus build/test dependencies.
-- [ ] Add runtime/source/wheelhouse schemas and failing validation fixtures.
+- [x] Add runtime/source/wheelhouse schemas and failing validation fixtures.
 - [ ] Select exact compatible versions on Windows Python 3.12/cu128.
 - [ ] Pin and hash CPython, SAM3, all wheels, and offline prerequisites.
 - [ ] Generate legal/source provenance and verify licenses are present.

@@ -91,12 +91,12 @@ the last complete desktop build rather than allowing anonymous bootstrap.
 
 ## 5. Enforce Effective Strict Offline
 
-- [ ] Normalize provider aliases, defaults, endpoint URLs, and redirects before
+- [x] Normalize provider aliases, defaults, endpoint URLs, and redirects before
       the outbound policy makes its decision.
-- [ ] Reject cloud providers, public fallbacks, remote redirects, and
+- [x] Reject cloud providers, public fallbacks, remote redirects, and
       provider-returned remote assets in strict mode before DNS/socket use.
-- [ ] Correct status parsing so explicit false remains false.
-- [ ] Add runtime network canaries for omitted URLs, redirects, and remote image
+- [x] Correct status parsing so explicit false remains false.
+- [x] Add runtime network canaries for omitted URLs, redirects, and remote image
       responses; do not rely on source-text assertions.
 
 Rollback point: keep the outbound gate centralized. Do not restore a mode that
@@ -120,7 +120,7 @@ cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 
 - [ ] Run the runtime-integration task's production composition smoke in
       addition to the commands above.
-- [ ] Capture browser/Tauri request traces for cold start and navigation; assert
+- [x] Capture browser/Tauri request traces for cold start and navigation; assert
       exact-origin auth, zero pre-session API traffic, zero 401, and no external
       SVG loads.
 - [ ] Search all artifact response, SVG render, fetch, EventSource, session DTO,
@@ -146,7 +146,7 @@ cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 
 ## Evidence (2026-08-01)
 
-- `247` Python tests pass; desktop TypeScript/Vite build, Rust fmt/clippy/test,
+- `254` Python tests pass; desktop TypeScript/Vite build, Rust fmt/clippy/test,
   and context validation pass.
 - `npm --prefix apps/desktop run test:bridge` passes 3 behavior tests against
   the Rust document-start template: exact-origin Bearer, Request preservation,
@@ -156,9 +156,21 @@ cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
   cross-port request was observed.
 - The external SAM3 checkpoint was read-only validated through the registry:
   `G:\0JHX-code\Project\FigureSmith-model\sam3.pt`, `3,450,062,241` bytes.
-- Remaining release gate: Tauri/WebView production cold-start trace with auth
-  enabled, and socket-level strict-offline canaries for omitted defaults,
-  redirects, and provider-returned assets.
+- `tests/test_strict_offline_network_canary.py` adds transport canaries for
+  omitted/default public provider URLs, remote provider-returned assets, and
+  loopback redirects. The guards run before the stubbed HTTP client and blocked
+  socket/DNS hooks; the redirect case asserts `allow_redirects=False`.
+- A real Tauri dev process was launched with WebView2 CDP enabled
+  (`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222`) and
+  an authenticated sidecar on `http://127.0.0.1:2082`. CDP captured a WebView
+  navigation to `/welcome.html` and a reload: each made only loopback requests,
+  each `/api/system/status` request had a Bearer header and status `200`, with
+  zero `401`, zero unauthenticated API requests, zero long-lived query tokens,
+  and zero non-loopback requests.
+
+The remaining release work is Windows Runtime packaging/clean-install proof;
+the Safe Beta security evidence is now reproducible in source tests and the
+real Tauri/WebView trace above.
 
 ## Risky Surfaces
 

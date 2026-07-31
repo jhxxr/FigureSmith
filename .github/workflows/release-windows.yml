@@ -106,6 +106,7 @@ jobs:
             dist-runtime/*.zip
             dist-runtime/checksums.txt
             dist-runtime/**/MANIFEST.json
+            dist-runtime/**/runtime-manifest.json
             dist-runtime/**/README-RUNTIME.md
           if-no-files-found: error
           retention-days: 14
@@ -245,7 +246,7 @@ jobs:
           mkdir -p upload
           # Flatten zips/exe/msi/checksums into upload/
           find release-assets -type f \( \
-            -name '*.zip' -o -name '*.exe' -o -name '*.msi' -o -name 'checksums.txt' -o -name 'MANIFEST.json' \
+            -name '*.zip' -o -name '*.exe' -o -name '*.msi' -o -name 'checksums.txt' -o -name 'MANIFEST.json' -o -name 'runtime-manifest.json' \
           \) -print0 | while IFS= read -r -d '' f; do
             base="$(basename "$f")"
             # avoid overwrite: prefix if needed

@@ -5,7 +5,7 @@
 **Version:** 0.6.0 (see root `VERSION`)  
 **Task:** `.trellis/tasks/07-28-figuresmith-phase6-windows-packaging`
 
-## Goal achieved
+## Packaging baseline
 
 Ship **packaging scripts and release documentation** for Windows x86_64:
 
@@ -56,7 +56,11 @@ Ship **packaging scripts and release documentation** for Windows x86_64:
 ## Known limitations
 
 - Full NSIS/MSVC installer binary requires a successful `tauri build` on the builder machine
-- Runtime Pack does **not** vendor multi-GB CUDA wheels into git; install torch from the official index
+- Runtime Pack currently remains a dependency-install pack; it does **not** vendor
+  the isolated CPython/locked CUDA wheelhouse required by the standalone desktop
+  runtime. The release resolver rejects this incomplete pack.
+- `build-desktop.ps1` fails when the Tauri executable is missing; it never emits
+  a source-only Portable placeholder.
 - Code signing not configured (optional future hook)
 - GitHub Actions workflow is `workflow_dispatch` draft (may need larger runners for tauri)
 

@@ -90,9 +90,25 @@ if (Test-Path $BundleDir) {
     Write-Warning "No Tauri bundle dir at $BundleDir — portable pack will still be assembled from sources/scripts."
 }
 
-# Portable zip: scripts + docs + pointer to run desktop/backend (not full target binary if missing)
+# Portable zip must contain the actual Tauri executable. A source/script-only
+# directory is not a publishable desktop artifact.
 $portableName = "FigureSmith-Portable-x64-$Version"
 $portableDir = Join-Path $distDesktop $portableName
+# Prefer release exe if present
+$releaseExe = Join-Path $TauriTarget "FigureSmith.exe"
+if (-not (Test-Path $releaseExe)) {
+    $cand = Get-ChildItem -Path $TauriTarget -Filter "*.exe" -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match "^(FigureSmith|figuresmith-desktop)\.exe$" } |
+        Select-Object -First 1
+    if ($cand) { $releaseExe = $cand.FullName }
+}
+if (-not (Test-Path $releaseExe -PathType Leaf)) {
+    $portableZip = Join-Path $distDesktop "$portableName.zip"
+    if (Test-Path $portableDir) { Remove-Item -Recurse -Force $portableDir }
+    if (Test-Path $portableZip) { Remove-Item -Force $portableZip }
+    throw "No FigureSmith release executable found under $TauriTarget; refusing to create a placeholder Portable artifact."
+}
+
 if (Test-Path $portableDir) { Remove-Item -Recurse -Force $portableDir }
 New-Item -ItemType Directory -Path $portableDir | Out-Null
 
@@ -101,30 +117,8 @@ foreach ($f in @("LICENSE", "NOTICE.md", "THIRD_PARTY_NOTICES.md", "README.md", 
     if (Test-Path $src) { Copy-Item $src (Join-Path $portableDir $f) -Force }
 }
 
-# Prefer release exe if present
-$releaseExe = Join-Path $TauriTarget "FigureSmith.exe"
-if (-not (Test-Path $releaseExe)) {
-    $cand = Get-ChildItem -Path $TauriTarget -Filter "*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-    if ($cand) { $releaseExe = $cand.FullName }
-}
-if (Test-Path $releaseExe) {
-    Copy-Item $releaseExe (Join-Path $portableDir "FigureSmith.exe") -Force
-    Write-Host "Included FigureSmith.exe in portable pack"
-} else {
-    @"
-# FigureSmith portable placeholder
-
-No FigureSmith.exe was found under apps/desktop/src-tauri/target/release.
-Build on a machine with Rust/Node:
-
-  ./scripts/build-desktop.ps1
-
-Or run from source:
-
-  ./scripts/setup-dev.ps1
-  ./scripts/run-desktop.ps1
-"@ | Set-Content (Join-Path $portableDir "BUILD_INSTRUCTIONS.txt") -Encoding utf8
-}
+Copy-Item $releaseExe (Join-Path $portableDir "FigureSmith.exe") -Force
+Write-Host "Included FigureSmith.exe in portable pack"
 
 # Helper scripts
 $pScripts = Join-Path $portableDir "scripts"
@@ -161,6 +155,3 @@ if ($bad) {
 & (Join-Path $PSScriptRoot "write-checksums.ps1") -Path $distDesktop -OutFile (Join-Path $distDesktop "checksums.txt")
 
 Write-Host "Desktop packaging done -> $distDesktop" -ForegroundColor Green
-if (-not $copied -and -not (Test-Path $releaseExe)) {
-    Write-Host "Note: full installer binary missing until tauri build succeeds." -ForegroundColor Yellow
-}

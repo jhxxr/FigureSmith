@@ -17,9 +17,12 @@
 
 ## Verify artifacts
 
-- [ ] `dist-runtime/**/MANIFEST.json` has `"contains_weights": false`
+- [ ] `dist-runtime/**/MANIFEST.json` and `runtime-manifest.json` have
+  `"contains_weights": false`
 - [ ] No `*.pt` / `*.safetensors` under `dist-runtime` or `dist-desktop`
 - [ ] `checksums.txt` present and hashes match
+- [ ] Portable archive contains a real `FigureSmith.exe`; missing binaries fail
+  the build and never produce a placeholder archive
 - [ ] Portable/README states models must be imported by the user
 - [ ] Product name is **FigureSmith** (not AutoFigure-Edit)
 

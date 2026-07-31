@@ -167,7 +167,6 @@ jobs:
             dist-desktop/FigureSmith-Portable-*.zip
             dist-desktop/checksums.txt
             dist-desktop/**/README-PORTABLE.md
-            dist-desktop/**/BUILD_INSTRUCTIONS.txt
           if-no-files-found: error
           retention-days: 14
 

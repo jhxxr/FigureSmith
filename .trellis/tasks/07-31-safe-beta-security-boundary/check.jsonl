@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Check backend sanitizer, response, failure, and test changes against the backend layer guidance."}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Check bridge, readiness, editor, and desktop session changes against the frontend layer guidance."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Verify end-to-end data flow from Rust session and untrusted SVG sources through every browser and backend boundary."}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Verify sanitizer and exact-origin logic remain centralized and that no sink reimplements a weaker local rule."}
+{"file":".trellis/tasks/07-31-figuresmith-release-hardening/research/audit-baseline.md","reason":"Known exploitable behaviors and source anchors required for regression verification."}
+{"file":".trellis/tasks/07-31-safe-beta-security-boundary/research/technical-notes.md","reason":"Hostile/compatibility policies and exact-origin/offline invariants for the check pass."}

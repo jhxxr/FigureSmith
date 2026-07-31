@@ -13,6 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
+        "label": "splash",
         "title": "FigureSmith",
         "width": 1280,
         "height": 860,

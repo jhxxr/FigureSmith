@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/backend/index.md", "reason": "Backend layer entry point for the shared SVG sanitizer, artifact response, and auth error behavior."}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend layer entry point for the bridge, readiness gate, editor, and fallback rendering changes."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "The task spans Python generation and HTTP egress, browser request wrapping, and Rust session injection; boundary contracts must remain aligned."}
+{"file": ".trellis/spec/guides/code-reuse-thinking-guide.md", "reason": "Requires one sanitizer owner and one origin predicate rather than divergent checks at each SVG or credential sink."}
+{"file":".trellis/tasks/07-31-figuresmith-release-hardening/research/audit-baseline.md","reason":"Verified SVG, session-origin, first-load, and strict-offline failures plus Safe Beta scope decisions."}
+{"file":".trellis/tasks/07-31-safe-beta-security-boundary/research/technical-notes.md","reason":"Selected sanitizer, bridge, response-header, and runtime offline-canary policies."}

@@ -1,0 +1,2 @@
+{"file":".trellis/tasks/07-31-figuresmith-release-hardening/research/audit-baseline.md","reason":"Known runtime discovery and packaging failures for fail-closed regression review."}
+{"file":".trellis/tasks/07-31-safe-beta-windows-runtime/research/technical-notes.md","reason":"Offline, deterministic, isolation, manifest, no-weight, and resolver verification requirements."}

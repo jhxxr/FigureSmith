@@ -74,8 +74,8 @@ def get_app_data_dir() -> Path:
     override = os.environ.get("FIGURESMITH_DATA_DIR")
     if override and override.strip():
         path = Path(override).expanduser().resolve()
-        _ensure_writable_dir(path)
-        return path
+        if _ensure_writable_dir(path):
+            return path
 
     candidates: list[Path] = []
 

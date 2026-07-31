@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-import-sam3-model"
+description = "Enables the import_sam3_model command without any pre-configured scope."
+commands.allow = ["import_sam3_model"]
+
+[[permission]]
+identifier = "deny-import-sam3-model"
+description = "Denies the import_sam3_model command without any pre-configured scope."
+commands.deny = ["import_sam3_model"]

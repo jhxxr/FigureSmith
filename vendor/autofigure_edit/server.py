@@ -11,22 +11,48 @@ import threading
 import time
 import uuid
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 
 BASE_DIR = Path(__file__).resolve().parent
 WEB_DIR = BASE_DIR / "web"
-OUTPUTS_DIR = BASE_DIR / "outputs"
+
+
+def _runtime_data_dir() -> Path:
+    """Resolve writable app data without writing into the vendor tree."""
+    try:
+        from figuresmith.models.paths import get_app_data_dir
+
+        return get_app_data_dir()
+    except Exception:
+        # Keep the vendored server independently runnable if the FigureSmith
+        # package is not on ``PYTHONPATH``. This fallback is still outside the
+        # source tree and is only used by standalone upstream development.
+        candidate = Path(os.environ.get("FIGURESMITH_DATA_DIR", "")).expanduser()
+        if not str(candidate).strip():
+            candidate = Path(tempfile.gettempdir()) / "FigureSmith"
+        candidate.mkdir(parents=True, exist_ok=True)
+        return candidate.resolve()
+
+
+APP_DATA_DIR = _runtime_data_dir()
+OUTPUTS_DIR = Path(
+    os.environ.get("FIGURESMITH_OUTPUTS_DIR", str(APP_DATA_DIR / "outputs"))
+).expanduser().resolve()
+UPLOADS_DIR = Path(
+    os.environ.get("FIGURESMITH_UPLOADS_DIR", str(APP_DATA_DIR / "uploads"))
+).expanduser().resolve()
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
-UPLOADS_DIR = BASE_DIR / "uploads"
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 PYTHON_EXECUTABLE = os.environ.get("AUTOFIGURE_PYTHON") or sys.executable
@@ -42,6 +68,32 @@ SVG_EDIT_CANDIDATES = [
 ]
 
 SENSITIVE_CMD_FLAGS = {"--api_key", "--image_api_key", "--sam_api_key"}
+
+
+def _resolve_client_path(value: str) -> str:
+    """Resolve a client-provided relative upload path without source escapes."""
+    candidate = Path(value)
+    if candidate.is_absolute():
+        return str(candidate)
+
+    roots = (APP_DATA_DIR, BASE_DIR)
+    resolved_candidates: list[Path] = []
+    for root in roots:
+        root_resolved = root.resolve()
+        resolved = (root_resolved / candidate).resolve()
+        try:
+            resolved.relative_to(root_resolved)
+        except ValueError:
+            continue
+        resolved_candidates.append(resolved)
+        if resolved.is_file():
+            return str(resolved)
+
+    # Preserve a useful error path for the child process if the file vanished
+    # between upload and run; it remains rooted in app data.
+    if resolved_candidates:
+        return str(resolved_candidates[0])
+    return str((APP_DATA_DIR / candidate).resolve())
 
 
 def _resolve_svg_edit_path() -> tuple[bool, str | None]:
@@ -174,11 +226,11 @@ def get_history_job(job_id: str) -> JSONResponse:
 
 
 @app.get("/api/history/{job_id}/artifacts/{path:path}")
-def get_history_artifact(job_id: str, path: str) -> FileResponse:
+def get_history_artifact(job_id: str, path: str, download: bool = False) -> Response:
     output_dir = _resolve_output_dir(job_id)
     if not output_dir:
         raise HTTPException(status_code=404, detail="History job not found")
-    return _artifact_file_response(output_dir, path)
+    return _artifact_file_response(output_dir, path, download=download)
 
 
 @app.post("/api/run")
@@ -252,11 +304,7 @@ def run_job(req: RunRequest) -> JSONResponse:
     if method_text:
         cmd += ["--method_text", method_text]
     if input_figure_path:
-        resolved_input_path = (
-            str((BASE_DIR / input_figure_path).resolve())
-            if not Path(input_figure_path).is_absolute()
-            else input_figure_path
-        )
+        resolved_input_path = _resolve_client_path(input_figure_path)
         cmd += ["--input_figure_path", resolved_input_path]
 
     if req.api_key:
@@ -325,11 +373,7 @@ def run_job(req: RunRequest) -> JSONResponse:
 
     reference_path = req.reference_image_path
     if reference_path:
-        reference_path = (
-            str((BASE_DIR / reference_path).resolve())
-            if not Path(reference_path).is_absolute()
-            else reference_path
-        )
+        reference_path = _resolve_client_path(reference_path)
         cmd += ["--reference_image_path", reference_path]
 
     env = os.environ.copy()
@@ -412,7 +456,12 @@ async def upload_reference(file: UploadFile = File(...)) -> JSONResponse:
     out_path = UPLOADS_DIR / name
     out_path.write_bytes(data)
 
-    rel_path = out_path.relative_to(BASE_DIR).as_posix()
+    try:
+        rel_path = out_path.relative_to(APP_DATA_DIR).as_posix()
+    except ValueError:
+        # An explicitly overridden upload directory may live outside the
+        # canonical root; retain a usable absolute path in that case.
+        rel_path = str(out_path)
     return JSONResponse(
         {"path": rel_path, "url": f"/api/uploads/{name}", "name": file.filename}
     )
@@ -440,22 +489,24 @@ def stream_events(job_id: str) -> StreamingResponse:
 
 
 @app.get("/api/artifacts/{job_id}/{path:path}")
-def get_artifact(job_id: str, path: str) -> FileResponse:
+def get_artifact(job_id: str, path: str, download: bool = False) -> Response:
     job = JOBS.get(job_id)
     output_dir = job.output_dir if job else _resolve_output_dir(job_id)
     if not output_dir:
         raise HTTPException(status_code=404, detail="Job not found")
-    return _artifact_file_response(output_dir, path)
+    return _artifact_file_response(output_dir, path, download=download)
 
 
 @app.get("/api/uploads/{filename}")
-def get_upload(filename: str) -> FileResponse:
+def get_upload(filename: str, download: bool = False) -> Response:
     candidate = (UPLOADS_DIR / filename).resolve()
-    if not str(candidate).startswith(str(UPLOADS_DIR.resolve())):
+    try:
+        candidate.relative_to(UPLOADS_DIR.resolve())
+    except ValueError:
         raise HTTPException(status_code=400, detail="Invalid path")
     if not candidate.is_file():
         raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(candidate)
+    return _artifact_file_response(UPLOADS_DIR, filename, download=download)
 
 
 def _format_sse(event: str, data: dict) -> str:
@@ -474,7 +525,9 @@ def _resolve_output_dir(job_id: str) -> Path | None:
     return candidate if candidate.is_dir() else None
 
 
-def _artifact_file_response(output_dir: Path, path: str) -> FileResponse:
+def _artifact_file_response(
+    output_dir: Path, path: str, *, download: bool = False
+) -> Response:
     candidate = (output_dir / path).resolve()
     try:
         candidate.relative_to(output_dir.resolve())
@@ -482,6 +535,37 @@ def _artifact_file_response(output_dir: Path, path: str) -> FileResponse:
         raise HTTPException(status_code=400, detail="Invalid path")
     if not candidate.is_file():
         raise HTTPException(status_code=404, detail="File not found")
+    if candidate.suffix.lower() == ".svg":
+        try:
+            from figuresmith.models.errors import UnsafeSvgContent
+            from figuresmith.security.svg import sanitize_svg_file
+
+            sanitized = sanitize_svg_file(candidate)
+        except UnsafeSvgContent as exc:
+            raise HTTPException(status_code=422, detail=exc.to_dict()) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail={"code": "SVG_SANITIZER_UNAVAILABLE", "message": str(exc)},
+            ) from exc
+        headers = {
+            "Content-Security-Policy": (
+                "sandbox; default-src 'none'; img-src data:; "
+                "style-src 'unsafe-inline'"
+            ),
+            "X-Content-Type-Options": "nosniff",
+        }
+        if download:
+            headers["Content-Disposition"] = (
+                f"attachment; filename*=UTF-8''{quote(candidate.name)}"
+            )
+        return Response(
+            content=sanitized.data,
+            media_type="image/svg+xml",
+            headers=headers,
+        )
+    if download:
+        return FileResponse(candidate, filename=candidate.name)
     return FileResponse(candidate)
 
 

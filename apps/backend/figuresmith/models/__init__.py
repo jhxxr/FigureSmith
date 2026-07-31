@@ -16,6 +16,7 @@ from figuresmith.models.errors import (
     RmbgModelMissing,
     Sam3ModelInvalid,
     Sam3ModelMissing,
+    UnsafeSvgContent,
 )
 from figuresmith.models.manager import ModelManager, default_manager
 from figuresmith.models.registry import ModelPaths, resolve_model_paths
@@ -41,6 +42,7 @@ __all__ = [
     "RmbgModelMissing",
     "Sam3ModelInvalid",
     "Sam3ModelMissing",
+    "UnsafeSvgContent",
     "default_manager",
     "resolve_model_paths",
 ]

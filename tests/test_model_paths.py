@@ -124,6 +124,21 @@ def test_get_app_data_dir_honors_env(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert get_app_data_dir() == (tmp_path / "custom-data").resolve()
 
 
+def test_get_app_data_dir_does_not_trust_unwritable_explicit_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake_local = tmp_path / "LocalAppData"
+    fake_local.mkdir()
+    blocked = tmp_path / "blocked-file"
+    blocked.write_text("x", encoding="utf-8")
+    monkeypatch.setenv("FIGURESMITH_DATA_DIR", str(blocked))
+    monkeypatch.setenv("LOCALAPPDATA", str(fake_local))
+    monkeypatch.delenv("FIGURESMITH_INSTALL_ROOT", raising=False)
+    monkeypatch.setattr("figuresmith.models.paths._find_repo_root", lambda: None)
+
+    assert get_app_data_dir() == (fake_local / "FigureSmith").resolve()
+
+
 def test_get_app_data_dir_uses_install_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Prefer <install_root>/data over LOCALAPPDATA when install root is writable."""
     monkeypatch.delenv("FIGURESMITH_DATA_DIR", raising=False)

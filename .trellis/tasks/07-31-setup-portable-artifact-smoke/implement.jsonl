@@ -1,0 +1,2 @@
+{"file":".trellis/tasks/07-31-figuresmith-release-hardening/research/audit-baseline.md","reason":"Verified placeholder/release gate failures and clean-artifact Safe Beta constraints."}
+{"file":".trellis/tasks/07-31-safe-beta-windows-runtime/research/technical-notes.md","reason":"Canonical payload, self-test, clean-runner, negative-smoke, and offline prerequisite contract."}

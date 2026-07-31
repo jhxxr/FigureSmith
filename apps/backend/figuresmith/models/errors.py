@@ -80,6 +80,12 @@ class OfflineEndpointForbidden(FigureSmithError):
     message_en = "Only loopback endpoints are allowed in strict offline mode"
 
 
+class UnsafeSvgContent(FigureSmithError):
+    code = "UNSAFE_SVG_CONTENT"
+    message_zh = "SVG 包含不安全或超限内容"
+    message_en = "SVG contains unsafe or oversized content"
+
+
 class PathTraversalRejected(FigureSmithError):
     code = "PATH_TRAVERSAL_REJECTED"
     message_zh = "拒绝不安全的模型路径（路径穿越）"

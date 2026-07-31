@@ -1,6 +1,7 @@
 /**
  * FigureSmith shared UI helpers (Phase 5).
- * Auth: relies on /figuresmith-bridge.js when window.__FIGURESMITH__ is set.
+ * Auth: the desktop document-start bridge owns credential attachment. Browser
+ * development remains anonymous when the backend auth bypass is enabled.
  */
 (function (global) {
   "use strict";
@@ -12,7 +13,7 @@
       return !!(
         global.__TAURI__ ||
         (global.__TAURI_INTERNALS__ && global.__TAURI_INTERNALS__.invoke) ||
-        (global.__FIGURESMITH__ && global.__FIGURESMITH__.desktop)
+        global.__FIGURESMITH_DESKTOP_READY__
       );
     } catch (_e) {
       return false;
@@ -43,14 +44,7 @@
   };
 
   FS.authHeaders = function (extra) {
-    var headers = Object.assign({ Accept: "application/json" }, extra || {});
-    try {
-      var session = global.__FIGURESMITH__;
-      if (session && session.token && !headers.Authorization) {
-        headers.Authorization = "Bearer " + session.token;
-      }
-    } catch (_e) {}
-    return headers;
+    return Object.assign({ Accept: "application/json" }, extra || {});
   };
 
   FS.api = async function (path, options) {

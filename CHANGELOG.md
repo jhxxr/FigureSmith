@@ -57,8 +57,10 @@ All notable changes to FigureSmith are documented in this file.
 - Spawn Python sidecar on **127.0.0.1** with free port, `FIGURESMITH_SESSION_TOKEN`, and strict offline env.
 - Add Bearer session-token middleware for `/api/*` (`figuresmith/security/auth.py`); `/healthz` remains public.
 - Add `POST /api/shutdown` for graceful sidecar exit; Tauri force-kills process tree on timeout.
-- Add Tauri commands: `get_session`, `import_sam3_model`, `import_rmbg_archive`, `import_rmbg_folder`, `open_models_directory`.
-- Inject in-memory session + `/figuresmith-bridge.js` fetch wrapper for vendor UI API calls.
+- Add four Tauri model commands: `import_sam3_model`, `import_rmbg_archive`,
+  `import_rmbg_folder`, and `open_models_directory`.
+- Install the session wrapper at document start in Rust; the remote webview is
+  authorized by an exact-port dynamic capability and no session getter exists.
 - Add `scripts/run-desktop.ps1` and implement `scripts/build-desktop.ps1` (no model weights).
 - Add auth/shutdown unit tests; `FIGURESMITH_DISABLE_AUTH=1` keeps Phase 3 TestClient suites green.
 - Document delivery in `docs/phase4-delivery.md`.

@@ -6,29 +6,27 @@
 //! - On exit: POST /api/shutdown, then force-kill process tree if needed
 
 use rand::RngCore;
-use serde::Serialize;
 use std::io::{BufRead, BufReader};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
 /// Always loopback for desktop spawn — refuse any other host.
 const BIND_HOST: &str = "127.0.0.1";
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone)]
 pub struct SessionInfo {
     pub port: u16,
     pub api_base: String,
     /// One-time process session token (memory only; never persist).
     pub token: String,
-    pub ready: bool,
 }
 
 pub struct SidecarState {
-    inner: Mutex<SidecarInner>,
+    inner: Arc<Mutex<SidecarInner>>,
 }
 
 struct SidecarInner {
@@ -36,6 +34,48 @@ struct SidecarInner {
     port: u16,
     token: String,
     ready: bool,
+}
+
+/// Owns a newly spawned child until startup has completed.
+///
+/// `std::process::Child` does not kill the OS process when it is dropped. The
+/// guard closes that leak on every startup error path, including a readiness
+/// timeout or an early Python import failure.
+struct PendingChild {
+    child: Option<Child>,
+}
+
+impl PendingChild {
+    fn new(child: Child) -> Self {
+        Self { child: Some(child) }
+    }
+
+    fn child_mut(&mut self) -> Result<&mut Child, String> {
+        self.child
+            .as_mut()
+            .ok_or_else(|| "sidecar child ownership was lost during startup".to_string())
+    }
+
+    fn into_child(mut self) -> Result<Child, String> {
+        self.child
+            .take()
+            .ok_or_else(|| "sidecar child ownership was lost during startup".to_string())
+    }
+}
+
+impl Drop for PendingChild {
+    fn drop(&mut self) {
+        let Some(mut child) = self.child.take() else {
+            return;
+        };
+        if let Ok(Some(_)) = child.try_wait() {
+            return;
+        }
+        let pid = child.id();
+        force_kill_tree(pid);
+        let _ = child.kill();
+        let _ = child.wait();
+    }
 }
 
 impl SidecarState {
@@ -95,8 +135,6 @@ impl SidecarState {
             }
         } else if let Ok(exe) = std::env::current_exe() {
             if let Some(parent) = exe.parent() {
-                let data = parent.join("data");
-                cmd.env("FIGURESMITH_DATA_DIR", data.as_os_str());
                 if let Some(root) = parent.to_str() {
                     cmd.env("FIGURESMITH_INSTALL_ROOT", root);
                 }
@@ -119,44 +157,55 @@ impl SidecarState {
             token.len()
         );
 
-        let mut child = cmd
+        let child = cmd
             .spawn()
             .map_err(|e| format!("failed to spawn Python sidecar: {e}"))?;
+        let mut pending = PendingChild::new(child);
 
         // Drain stdout/stderr so the child cannot block on full pipes.
         // Redact token if it ever appears (should not).
-        if let Some(stdout) = child.stdout.take() {
+        if let Some(stdout) = pending.child_mut()?.stdout.take() {
             let token_for_redact = token.clone();
             thread::spawn(move || {
                 let reader = BufReader::new(stdout);
-                for line in reader.lines().flatten() {
+                for line in reader.lines().map_while(Result::ok) {
                     eprintln!("[sidecar] {}", redact(&line, &token_for_redact));
                 }
             });
         }
-        if let Some(stderr) = child.stderr.take() {
+        if let Some(stderr) = pending.child_mut()?.stderr.take() {
             let token_for_redact = token.clone();
             thread::spawn(move || {
                 let reader = BufReader::new(stderr);
-                for line in reader.lines().flatten() {
+                for line in reader.lines().map_while(Result::ok) {
                     eprintln!("[sidecar:err] {}", redact(&line, &token_for_redact));
                 }
             });
         }
 
         let base = format!("http://{BIND_HOST}:{port}");
-        wait_for_healthz(&base, Duration::from_secs(90))?;
+        wait_for_ready(pending.child_mut()?, &base, &token, Duration::from_secs(90))?;
+        let child = pending.into_child()?;
 
-        eprintln!("[FigureSmith] sidecar healthy at {base}/healthz");
+        eprintln!("[FigureSmith] sidecar ready at {base}/api/desktop/ready");
 
-        Ok(Self {
-            inner: Mutex::new(SidecarInner {
-                child: Some(child),
-                port,
-                token,
-                ready: true,
-            }),
-        })
+        let inner = Arc::new(Mutex::new(SidecarInner {
+            child: Some(child),
+            port,
+            token,
+            ready: true,
+        }));
+
+        Ok(Self { inner })
+    }
+
+    /// Begin monitoring after the state has been associated with the Tauri app.
+    /// The callback is invoked only for an unexpected post-ready child loss.
+    pub fn start_liveness_monitor<F>(&self, on_unexpected_exit: F)
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        spawn_liveness_monitor(Arc::clone(&self.inner), Arc::new(on_unexpected_exit));
     }
 
     pub fn session(&self) -> Result<SessionInfo, String> {
@@ -168,7 +217,6 @@ impl SidecarState {
             port: g.port,
             api_base: format!("http://{BIND_HOST}:{}", g.port),
             token: g.token.clone(),
-            ready: g.ready,
         })
     }
 
@@ -295,10 +343,7 @@ fn resolve_python(repo_root: &Path) -> Result<PathBuf, String> {
             .join(".venv")
             .join("bin")
             .join("python"),
-        repo_root
-            .join(".venv")
-            .join("Scripts")
-            .join("python.exe"),
+        repo_root.join(".venv").join("Scripts").join("python.exe"),
         repo_root.join(".venv").join("bin").join("python"),
     ];
     for c in candidates {
@@ -315,16 +360,42 @@ fn resolve_python(repo_root: &Path) -> Result<PathBuf, String> {
     }))
 }
 
-fn wait_for_healthz(base: &str, timeout: Duration) -> Result<(), String> {
-    // /healthz is public by design (Phase 4).
-    let url = format!("{base}/healthz");
+fn wait_for_ready(
+    child: &mut Child,
+    base: &str,
+    token: &str,
+    timeout: Duration,
+) -> Result<(), String> {
+    // The authenticated application probe proves the outer composition is
+    // mounted and the session-token middleware is usable before WebView load.
+    let url = format!("{base}/api/desktop/ready");
     let start = Instant::now();
     let mut last_err = String::from("not attempted");
     while start.elapsed() < timeout {
-        match ureq::get(&url).timeout(Duration::from_secs(2)).call() {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                return Err(format!("sidecar exited before ready probe: {status}"));
+            }
+            Err(e) => {
+                return Err(format!("failed to inspect sidecar during startup: {e}"));
+            }
+            Ok(None) => {}
+        }
+
+        match ureq::get(&url)
+            .set("Authorization", &format!("Bearer {token}"))
+            .timeout(Duration::from_secs(2))
+            .call()
+        {
             Ok(resp) if resp.status() >= 200 && resp.status() < 300 => return Ok(()),
+            Ok(resp) if matches!(resp.status(), 401 | 403) => {
+                return Err(format!(
+                    "sidecar ready probe rejected authentication: HTTP {}",
+                    resp.status()
+                ));
+            }
             Ok(resp) => {
-                last_err = format!("healthz status {}", resp.status());
+                last_err = format!("ready status {}", resp.status());
             }
             Err(e) => {
                 last_err = e.to_string();
@@ -333,9 +404,46 @@ fn wait_for_healthz(base: &str, timeout: Duration) -> Result<(), String> {
         thread::sleep(Duration::from_millis(250));
     }
     Err(format!(
-        "sidecar health check timed out after {:?}: {last_err}",
+        "sidecar ready check timed out after {:?}: {last_err}",
         timeout
     ))
+}
+
+fn spawn_liveness_monitor(
+    inner: Arc<Mutex<SidecarInner>>,
+    on_unexpected_exit: Arc<dyn Fn() + Send + Sync>,
+) {
+    thread::spawn(move || loop {
+        let unexpected_exit = {
+            let mut g = match inner.lock() {
+                Ok(g) => g,
+                Err(_) => return,
+            };
+            let Some(child) = g.child.as_mut() else {
+                return;
+            };
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    g.ready = false;
+                    let _ = g.child.take();
+                    eprintln!("[FigureSmith] sidecar exited unexpectedly: {status}");
+                    true
+                }
+                Ok(None) => false,
+                Err(err) => {
+                    g.ready = false;
+                    let _ = g.child.take();
+                    eprintln!("[FigureSmith] sidecar liveness probe failed: {err}");
+                    true
+                }
+            }
+        };
+        if unexpected_exit {
+            on_unexpected_exit();
+            return;
+        }
+        thread::sleep(Duration::from_millis(500));
+    });
 }
 
 fn force_kill_tree(pid: u32) {
@@ -415,7 +523,10 @@ mod tests {
     #[test]
     fn redact_hides_token() {
         let t = "abc123secret";
-        assert_eq!(redact("tok=abc123secret end", t), "tok=[REDACTED_SESSION_TOKEN] end");
+        assert_eq!(
+            redact("tok=abc123secret end", t),
+            "tok=[REDACTED_SESSION_TOKEN] end"
+        );
         assert_eq!(redact("clean line", t), "clean line");
     }
 
@@ -424,5 +535,35 @@ mod tests {
         let t = generate_token();
         assert_eq!(t.len(), 64);
         assert!(t.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn liveness_monitor_notifies_after_child_loss() {
+        let mut command = if cfg!(windows) {
+            let mut command = Command::new("cmd");
+            command.args(["/C", "exit", "7"]);
+            command
+        } else {
+            let mut command = Command::new("sh");
+            command.args(["-c", "exit 7"]);
+            command
+        };
+        let child = command.spawn().expect("spawn short-lived child");
+        let inner = Arc::new(Mutex::new(SidecarInner {
+            child: Some(child),
+            port: 1,
+            token: "test-token".into(),
+            ready: true,
+        }));
+        let (tx, rx) = std::sync::mpsc::channel();
+        spawn_liveness_monitor(
+            Arc::clone(&inner),
+            Arc::new(move || {
+                let _ = tx.send(());
+            }),
+        );
+
+        assert!(rx.recv_timeout(Duration::from_secs(2)).is_ok());
+        assert!(!inner.lock().expect("sidecar lock").ready);
     }
 }

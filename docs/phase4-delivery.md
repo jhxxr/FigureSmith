@@ -6,11 +6,14 @@ Ship a **runnable Windows desktop process lifecycle** for FigureSmith:
 
 - Tauri 2 shell under `apps/desktop/`
 - Local Python sidecar bound to **`127.0.0.1` only**
-- One-time **session token** Bearer auth on `/api/*`
+- One-time **session token** Bearer auth on `/api/*`, installed before remote
+  page code runs
 - Native file pickers for Phase 3 model import APIs
 - Clean exit (shutdown endpoint + process-tree kill)
 
-First-run wizard / polished hardware pages remain **Phase 5**. Installer / runtime pack remains **Phase 6**.
+The first-run wizard and hardware pages are delivered in Phase 5. Runtime-pack
+tooling is delivered in Phase 6; clean-machine packaged startup remains a
+release-hardening gate.
 
 ## What was delivered
 
@@ -20,7 +23,7 @@ First-run wizard / polished hardware pages remain **Phase 5**. Installer / runti
 |------|----------------|
 | Session auth middleware | `apps/backend/figuresmith/security/auth.py` |
 | Shutdown route | `POST /api/shutdown` via `figuresmith/api/system_routes.py` |
-| Desktop fetch bridge | `GET /figuresmith-bridge.js` (`figuresmith/static/desktop-bridge.js`) |
+| Desktop fetch bridge | Rust document-start bridge; `/figuresmith-bridge.js` is a no-token browser compatibility loader |
 | Entrypoint wiring | `apps/backend/main.py` mounts routes + middleware |
 | Test bypass | `FIGURESMITH_DISABLE_AUTH=1` (default in `tests/conftest.py`) |
 | Auth / shutdown tests | `tests/test_auth_middleware.py`, `tests/test_shutdown.py` |
@@ -40,7 +43,8 @@ Auth policy:
 | Product | **FigureSmith** (`app.figuresmith.desktop`) |
 | Sidecar | Free port on 127.0.0.1 → spawn `main.py --host 127.0.0.1 --port <p>` |
 | Env to child | `FIGURESMITH_SESSION_TOKEN`, `FIGURESMITH_STRICT_OFFLINE=1`, HF offline flags, `PYTHONPATH` |
-| Commands | `get_session`, `import_sam3_model`, `import_rmbg_archive`, `import_rmbg_folder`, `open_models_directory` |
+| Commands | `import_sam3_model`, `import_rmbg_archive`, `import_rmbg_folder`, `open_models_directory` (session is Rust-private) |
+| Remote capability | Dynamic exact `http://127.0.0.1:<port>/*` grant for `main`; unrelated origins and new windows denied |
 | Exit | `POST /api/shutdown` then wait ~3s then `taskkill /F /T` on Windows |
 | Icons | Placeholder teal PNGs/ICO (not upstream logo) |
 
@@ -52,7 +56,7 @@ Auth policy:
 | `scripts/build-desktop.ps1` | Release build entry |
 | `apps/desktop/README.md` | Prerequisites + security notes |
 | This file | Delivery record |
-| `CHANGELOG.md` | 0.4.0 |
+| `CHANGELOG.md` | 0.6.0 |
 
 ## Build prerequisites (Windows x86_64)
 
@@ -111,12 +115,12 @@ Plus `cargo check` in `apps/desktop/src-tauri` and `npm install` in `apps/deskto
 
 ## Explicit non-goals (still later)
 
-- Phase 5: welcome wizard, hardware page polish, model cards UX
-- Phase 6: runtime pack / polished installer
+- Clean-machine Setup/Portable startup smoke and full Tauri artifact verification
+- Graceful job cancellation and broader model/runtime supply-chain hardening
 - macOS / Linux packaging commitments
 - Shipping model weights
 
-## Phase 5 handoff
+## Follow-up hardening
 
 - First-run experience when models are missing
 - Hardware / capability page

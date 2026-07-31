@@ -1,0 +1,30 @@
+{
+  "id": "safe-beta-windows-runtime",
+  "name": "safe-beta-windows-runtime",
+  "title": "Safe beta Windows runtime distribution",
+  "description": "Ship Setup and Portable artifacts with pinned CPython and complete application dependencies, excluding model weights.",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P0",
+  "creator": "xingran",
+  "assignee": "xingran",
+  "createdAt": "2026-07-31",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "master",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "07-31-runtime-contract-dependency-locks",
+    "07-31-runtime-assembly-sidecar-resolver",
+    "07-31-setup-portable-artifact-smoke"
+  ],
+  "parent": "07-31-figuresmith-release-hardening",
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

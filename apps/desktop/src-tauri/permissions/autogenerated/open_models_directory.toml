@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-open-models-directory"
+description = "Enables the open_models_directory command without any pre-configured scope."
+commands.allow = ["open_models_directory"]
+
+[[permission]]
+identifier = "deny-open-models-directory"
+description = "Denies the open_models_directory command without any pre-configured scope."
+commands.deny = ["open_models_directory"]

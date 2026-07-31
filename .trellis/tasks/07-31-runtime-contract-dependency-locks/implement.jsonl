@@ -1,0 +1,2 @@
+{"file":".trellis/tasks/07-31-figuresmith-release-hardening/research/audit-baseline.md","reason":"Dependency, packaging, and version gaps plus the approved no-weight full-runtime boundary."}
+{"file":".trellis/tasks/07-31-safe-beta-windows-runtime/research/technical-notes.md","reason":"Runtime schema, locked inputs, probe matrix, and measurement-gate contract."}

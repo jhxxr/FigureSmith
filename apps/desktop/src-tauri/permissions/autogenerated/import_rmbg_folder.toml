@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-import-rmbg-folder"
+description = "Enables the import_rmbg_folder command without any pre-configured scope."
+commands.allow = ["import_rmbg_folder"]
+
+[[permission]]
+identifier = "deny-import-rmbg-folder"
+description = "Denies the import_rmbg_folder command without any pre-configured scope."
+commands.deny = ["import_rmbg_folder"]

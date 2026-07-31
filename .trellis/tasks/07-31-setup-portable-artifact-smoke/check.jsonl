@@ -1,0 +1,2 @@
+{"file":".trellis/tasks/07-31-figuresmith-release-hardening/research/audit-baseline.md","reason":"Known artifact and workflow bypasses required for independent release-gate review."}
+{"file":".trellis/tasks/07-31-safe-beta-windows-runtime/research/technical-notes.md","reason":"Positive/negative artifact-only verification and canonical payload invariants."}

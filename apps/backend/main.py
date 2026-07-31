@@ -30,6 +30,8 @@ import os
 import sys
 from pathlib import Path
 
+from fastapi import Request
+
 # Ensure apps/backend is importable when launched as a script.
 _BACKEND_DIR = Path(__file__).resolve().parent
 if str(_BACKEND_DIR) not in sys.path:
@@ -59,10 +61,6 @@ def _load_vendor_app():
     return vendor_server.app
 
 
-def _route_paths(app) -> set[str]:
-    return {str(getattr(r, "path", "") or "") for r in getattr(app, "routes", [])}
-
-
 def _static_dir() -> Path:
     return Path(__file__).resolve().parent / "figuresmith" / "static"
 
@@ -71,62 +69,17 @@ def _ui_dir() -> Path:
     return _static_dir() / "ui"
 
 
-def _insert_route_before_catch_all(app, route) -> None:
-    """Insert a Starlette route before the vendor ``Mount('/')`` catch-all.
-
-    Vendor ``server.py`` mounts ``StaticFiles`` at ``/`` last. Routes appended
-    after that mount are unreachable; insert immediately before it.
-    """
-    from starlette.routing import Mount
-
-    routes = app.router.routes
-    insert_at = len(routes)
-    for i, existing in enumerate(routes):
-        if isinstance(existing, Mount) and getattr(existing, "path", None) in ("/", ""):
-            insert_at = i
-            break
-    routes.insert(insert_at, route)
-
-
-def _mount_figuresmith_routes(app) -> None:
-    """Attach FigureSmith-owned API routers and static UI to the vendor app."""
-    paths = _route_paths(app)
-
-    # Phase 3 model manager
-    try:
-        from figuresmith.api.models_routes import mount_models_routes
-    except ImportError as exc:  # pragma: no cover
-        print(f"[FigureSmith] WARNING: model routes unavailable: {exc}", file=sys.stderr)
-    else:
-        if "/api/models" not in paths and not any(
-            p.startswith("/api/models") for p in paths
-        ):
-            mount_models_routes(app)
-            print("[FigureSmith] mounted /api/models/* (Phase 3 model manager)")
-
-    # Phase 4/5 system routes (shutdown + status + onboarding)
-    try:
-        from figuresmith.api.system_routes import mount_system_routes
-    except ImportError as exc:  # pragma: no cover
-        print(f"[FigureSmith] WARNING: system routes unavailable: {exc}", file=sys.stderr)
-    else:
-        mount_system_routes(app)
-        print("[FigureSmith] mounted /api/shutdown + /api/system/* (Phase 4/5)")
-
-    # Desktop bridge + Phase 5 static UI (must beat vendor StaticFiles mount)
-    _mount_desktop_bridge(app)
-    _mount_figuresmith_ui(app)
-
-
 def _mount_desktop_bridge(app) -> None:
-    """Expose ``/figuresmith-bridge.js`` ahead of vendor ``/`` static mount."""
-    paths = _route_paths(app)
+    """Expose the desktop bridge on the FigureSmith outer app."""
+    paths = {
+        str(getattr(route, "path", "") or "")
+        for route in getattr(app, "routes", [])
+    }
     if "/figuresmith-bridge.js" in paths:
         return
 
     try:
-        from starlette.routing import Route
-        from starlette.responses import FileResponse, Response
+        from starlette.responses import FileResponse
     except ImportError:  # pragma: no cover
         return
 
@@ -145,17 +98,13 @@ def _mount_desktop_bridge(app) -> None:
             filename="figuresmith-bridge.js",
         )
 
-    _insert_route_before_catch_all(
-        app,
-        Route("/figuresmith-bridge.js", figuresmith_bridge_js, methods=["GET"]),
-    )
+    app.add_route("/figuresmith-bridge.js", figuresmith_bridge_js, methods=["GET"])
     print("[FigureSmith] mounted /figuresmith-bridge.js (Phase 4 desktop bridge)")
 
 
 def _mount_figuresmith_ui(app) -> None:
-    """Serve welcome/models pages and shared FS assets with priority over vendor web."""
+    """Serve FigureSmith UI assets before the vendor fallback mount."""
     try:
-        from starlette.routing import Route
         from starlette.responses import FileResponse, Response
     except ImportError:  # pragma: no cover
         return
@@ -187,7 +136,10 @@ def _mount_figuresmith_ui(app) -> None:
         "/fs/brand-mark.svg": (ui / "brand-mark.svg", "image/svg+xml"),
     }
 
-    existing = _route_paths(app)
+    existing = {
+        str(getattr(route, "path", "") or "")
+        for route in getattr(app, "routes", [])
+    }
     mounted = 0
     for url, (path, media) in page_files.items():
         if url in existing:
@@ -199,10 +151,7 @@ def _mount_figuresmith_ui(app) -> None:
                 file=sys.stderr,
             )
             continue
-        _insert_route_before_catch_all(
-            app,
-            Route(url, _file_endpoint(path, media), methods=["GET"]),
-        )
+        app.add_route(url, _file_endpoint(path, media), methods=["GET"])
         mounted += 1
 
     # Optional: also expose brand-override helpers if present
@@ -213,14 +162,90 @@ def _mount_figuresmith_ui(app) -> None:
         path = static / name
         url = f"/fs/{name}"
         if path.is_file() and url not in existing:
-            _insert_route_before_catch_all(
-                app,
-                Route(url, _file_endpoint(path, media), methods=["GET"]),
-            )
+            app.add_route(url, _file_endpoint(path, media), methods=["GET"])
             mounted += 1
 
     if mounted:
         print(f"[FigureSmith] mounted {mounted} Phase 5 UI asset route(s)")
+
+
+def _configure_vendor_data_root(vendor_app, app_data_dir: Path) -> None:
+    """Point the vendored server's mutable directories at the canonical root."""
+    vendor_server = sys.modules.get("server")
+    if vendor_server is None or getattr(vendor_server, "app", None) is not vendor_app:
+        return
+
+    outputs = Path(
+        os.environ.get("FIGURESMITH_OUTPUTS_DIR", str(app_data_dir / "outputs"))
+    ).expanduser().resolve()
+    uploads = Path(
+        os.environ.get("FIGURESMITH_UPLOADS_DIR", str(app_data_dir / "uploads"))
+    ).expanduser().resolve()
+    outputs.mkdir(parents=True, exist_ok=True)
+    uploads.mkdir(parents=True, exist_ok=True)
+    vendor_server.APP_DATA_DIR = app_data_dir
+    vendor_server.OUTPUTS_DIR = outputs
+    vendor_server.UPLOADS_DIR = uploads
+
+
+def create_production_app(
+    vendor_app=None,
+    *,
+    app_data_dir: Path | None = None,
+    install_auth: bool = True,
+):
+    """Create the production composition used by Uvicorn and desktop smoke.
+
+    FigureSmith owns the outer app so its routes and middleware are registered
+    before the vendor application is mounted as the final ``/`` fallback.
+    ``vendor_app`` is injectable for composition tests without changing route
+    ordering or production behavior.
+    """
+    from fastapi import FastAPI
+
+    if vendor_app is None:
+        vendor_app = _load_vendor_app()
+
+    app = FastAPI(title="FigureSmith", version="0.6.0")
+    from figuresmith.api.models_routes import mount_models_routes
+    from figuresmith.api.system_routes import mount_system_routes
+    from figuresmith.models.paths import get_app_data_dir
+
+    resolved_data_dir = (
+        Path(app_data_dir).resolve() if app_data_dir is not None else get_app_data_dir()
+    )
+    app.state.figuresmith_app_data_dir = str(resolved_data_dir)
+    _configure_vendor_data_root(vendor_app, resolved_data_dir)
+
+    mount_models_routes(app, app_data_dir=resolved_data_dir)
+    mount_system_routes(app)
+
+    @app.get("/healthz")
+    def healthz() -> dict[str, str]:
+        return {"status": "ok", "application": "figuresmith"}
+
+    @app.get("/api/desktop/ready")
+    def desktop_ready(request: Request) -> dict[str, object]:
+        """Authenticated readiness probe for the desktop bootstrap."""
+        return {
+            "ok": True,
+            "ready": True,
+            "application": "figuresmith",
+            "api_base_path": "/api",
+            "app_data_dir": str(
+                getattr(request.app.state, "figuresmith_app_data_dir", str(resolved_data_dir))
+            ),
+        }
+
+    _mount_desktop_bridge(app)
+    _mount_figuresmith_ui(app)
+
+    # This must remain the final route: vendor UI/API is an opaque fallback.
+    app.mount("/", vendor_app)
+
+    if install_auth:
+        _install_security(app)
+    return app
 
 
 def _install_security(app) -> None:
@@ -306,9 +331,7 @@ def main(argv: list[str] | None = None) -> None:
 
     vendor_root = get_vendor_root()
     ensure_vendor_on_sys_path()
-    app = _load_vendor_app()
-    _mount_figuresmith_routes(app)
-    _install_security(app)
+    app = create_production_app()
 
     try:
         import uvicorn
@@ -324,7 +347,7 @@ def main(argv: list[str] | None = None) -> None:
 
     print("--- FigureSmith backend (Phase 5) ---")
     print(f"Vendor root : {vendor_root}")
-    print(f"Uvicorn app : {get_vendor_server_module_hint()}")
+    print(f"Uvicorn app : {get_vendor_server_module_hint()} (composed)")
     print(f"Local URL   : http://{args.host}:{args.port}/")
     print(f"Welcome     : http://{args.host}:{args.port}/welcome.html")
     print(f"Models UI   : http://{args.host}:{args.port}/models.html")

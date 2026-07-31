@@ -1,0 +1,2 @@
+{"file":".trellis/tasks/07-31-figuresmith-release-hardening/research/audit-baseline.md","reason":"Verified lifecycle, import, secret-argv, integrity, and shutdown findings with source anchors."}
+{"file":".trellis/tasks/07-31-job-model-lifecycle-hardening/research/technical-notes.md","reason":"Selected bounded job, stdin secret, transaction journal, and trusted model-code contracts."}

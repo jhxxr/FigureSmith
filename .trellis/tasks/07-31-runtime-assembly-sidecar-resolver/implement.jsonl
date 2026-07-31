@@ -1,0 +1,2 @@
+{"file":".trellis/tasks/07-31-figuresmith-release-hardening/research/audit-baseline.md","reason":"Verified source-only sidecar, mismatched layouts, placeholder packaging, and immutable-data constraints."}
+{"file":".trellis/tasks/07-31-safe-beta-windows-runtime/research/technical-notes.md","reason":"Canonical Runtime Directory, offline assembly, manifest, isolation, and release resolver contract."}

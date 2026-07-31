@@ -1,0 +1,2 @@
+{"file":".trellis/tasks/07-31-figuresmith-release-hardening/research/audit-baseline.md","reason":"Verified Program Files fallback, source-relative mutable paths, and release immutability constraints."}
+{"file":".trellis/tasks/07-31-writable-application-data/research/technical-notes.md","reason":"Selected first-writable resolution, canonical layout, write probe, and release/development behavior."}

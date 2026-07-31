@@ -7,8 +7,8 @@ The Tauri process:
 1. Finds a free TCP port on `127.0.0.1`
 2. Spawns `apps/backend/main.py` as a Python **sidecar**
 3. Passes a one-time `FIGURESMITH_SESSION_TOKEN` (memory/env only)
-4. Waits for `GET /healthz`
-5. Loads the vendor Web UI from the sidecar
+4. Waits for authenticated `GET /api/desktop/ready`
+5. Registers a port-specific Tauri capability and loads the vendor Web UI in a remote `main` window
 6. On exit: `POST /api/shutdown`, then force-kills the process tree if needed
 
 ## Prerequisites
@@ -57,7 +57,6 @@ Release packaging / runtime pack polish is **Phase 6**. Model weights are **neve
 
 | Command | Role |
 |---------|------|
-| `get_session` | `{ port, api_base, token, ready }` (token not persisted) |
 | `import_sam3_model` | Native file picker → `POST /api/models/sam3/import` |
 | `import_rmbg_archive` | ZIP picker → RMBG import |
 | `import_rmbg_folder` | Folder picker → RMBG import |
@@ -81,4 +80,4 @@ Placeholder solid-color icons under `src-tauri/icons/` (not the upstream AutoFig
 
 - **Sidecar health timeout**: ensure `./scripts/setup-dev.ps1` succeeded and `python apps/backend/main.py` works alone.
 - **Auth 401 in browser-only mode**: browser dev should use `./scripts/run-backend.ps1` without a session token, or set `FIGURESMITH_DISABLE_AUTH=1` (tests only).
-- **Orphan Python after crash**: Task Manager → end `python.exe` for FigureSmith; exit path uses `taskkill /T` as fallback.
+- **Orphan Python after crash**: startup and exit paths own a cleanup guard and use `taskkill /T` as a final fallback.

@@ -1,0 +1,2 @@
+{"file":".trellis/tasks/07-31-figuresmith-release-hardening/research/audit-baseline.md","reason":"Cross-layer audit evidence and Safe Beta constraints that the runtime integration must preserve."}
+{"file":".trellis/tasks/07-31-safe-beta-runtime-integration/research/technical-notes.md","reason":"Selected ASGI composition, exact dynamic Tauri ACL, document-start bootstrap, and sidecar state-machine design."}

@@ -20,6 +20,7 @@ from figuresmith.security.redact import (
     redact_mapping,
     redact_secrets_text,
 )
+from figuresmith.security.svg import SanitizedSvg, SvgLimits, sanitize_svg
 
 __all__ = [
     "SessionTokenMiddleware",
@@ -35,5 +36,8 @@ __all__ = [
     "redact_mapping",
     "redact_secrets",
     "redact_secrets_text",
+    "SanitizedSvg",
+    "SvgLimits",
+    "sanitize_svg",
     "validate_offline_endpoint",
 ]

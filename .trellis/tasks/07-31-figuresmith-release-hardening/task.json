@@ -1,0 +1,33 @@
+{
+  "id": "figuresmith-release-hardening",
+  "name": "figuresmith-release-hardening",
+  "title": "FigureSmith release hardening",
+  "description": "",
+  "status": "planning",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "xingran",
+  "assignee": "xingran",
+  "createdAt": "2026-07-31",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "master",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "07-31-safe-beta-runtime-integration",
+    "07-31-safe-beta-security-boundary",
+    "07-31-safe-beta-windows-runtime",
+    "07-31-job-model-lifecycle-hardening",
+    "07-31-writable-application-data",
+    "07-31-release-quality-consistency"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

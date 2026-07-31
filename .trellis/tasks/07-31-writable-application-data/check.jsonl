@@ -1,0 +1,2 @@
+{"file":".trellis/tasks/07-31-figuresmith-release-hardening/research/audit-baseline.md","reason":"Known writable-path failures and acceptance constraints for regression checking."}
+{"file":".trellis/tasks/07-31-writable-application-data/research/technical-notes.md","reason":"Canonical root/layout and read-only install test contract for independent verification."}

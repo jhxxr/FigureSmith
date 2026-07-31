@@ -1,0 +1,2 @@
+{"file":".trellis/tasks/07-31-figuresmith-release-hardening/research/audit-baseline.md","reason":"Known production failures and baseline commands required for regression review."}
+{"file":".trellis/tasks/07-31-safe-beta-runtime-integration/research/technical-notes.md","reason":"Acceptance-sensitive route, ACL, bootstrap, and cleanup contracts for verification."}

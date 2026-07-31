@@ -1,0 +1,2 @@
+{"file":".trellis/tasks/07-31-figuresmith-release-hardening/research/audit-baseline.md","reason":"Verified packaging/runtime failures, scope decisions, and clean-artifact constraints."}
+{"file":".trellis/tasks/07-31-safe-beta-windows-runtime/research/technical-notes.md","reason":"Canonical runtime schema, offline assembly, manifest, resolver, and artifact smoke design."}

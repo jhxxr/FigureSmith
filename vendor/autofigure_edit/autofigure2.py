@@ -2633,6 +2633,12 @@ Please output ONLY the SVG code, starting with <svg and ending with </svg>. Do n
         base_url=base_url,
         provider=provider,
     )
+    try:
+        from figuresmith.security.svg import sanitize_svg
+
+        svg_code = sanitize_svg(svg_code).data.decode("utf-8")
+    except Exception as exc:
+        raise RuntimeError(f"[UNSAFE_SVG_CONTENT] {type(exc).__name__}") from exc
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -3109,6 +3115,17 @@ def validate_base64_images(svg_code: str, expected_count: int) -> tuple[bool, st
 
 def svg_to_png(svg_path: str, output_path: str, scale: float = 1.0) -> Optional[str]:
     """将 SVG 转换为 PNG"""
+    # Sanitize immediately before handing SVG bytes to a renderer. This also
+    # protects optimizer-generated or historical intermediate files that did
+    # not pass through the initial extraction path.
+    try:
+        from figuresmith.security.svg import sanitize_svg_file
+
+        safe_svg = sanitize_svg_file(svg_path)
+        Path(svg_path).write_bytes(safe_svg.data)
+    except Exception as exc:
+        print(f"  SVG 安全检查失败: {type(exc).__name__}")
+        return None
     try:
         import cairosvg
         cairosvg.svg2png(url=svg_path, write_to=output_path, scale=scale)
@@ -3319,6 +3336,14 @@ Please carefully compare and check the following **TWO MAJOR ASPECTS with EIGHT 
                     print("  拒绝此次优化，保留上一版本 SVG")
                     continue
                 print(f"  {images_msg}")
+
+            try:
+                from figuresmith.security.svg import sanitize_svg
+
+                optimized_svg = sanitize_svg(optimized_svg).data.decode("utf-8")
+            except Exception as exc:
+                print(f"  拒绝不安全 SVG: {type(exc).__name__}")
+                continue
 
             current_svg = optimized_svg
             print("  优化迭代完成")

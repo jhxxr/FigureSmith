@@ -8,12 +8,7 @@ use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
-fn api_request(
-    method: &str,
-    url: &str,
-    token: &str,
-    body: Option<Value>,
-) -> Result<Value, String> {
+fn api_request(method: &str, url: &str, token: &str, body: Option<Value>) -> Result<Value, String> {
     let mut req = match method {
         "GET" => ureq::get(url),
         "POST" => ureq::post(url),
@@ -47,23 +42,27 @@ fn api_request(
     serde_json::from_str(&text).map_err(|e| format!("invalid JSON response: {e}; body={text}"))
 }
 
-async fn pick_file(app: &AppHandle, filters: Vec<(&str, &[&str])>) -> Result<Option<PathBuf>, String> {
+async fn pick_file(
+    app: &AppHandle,
+    filters: Vec<(&str, &[&str])>,
+) -> Result<Option<PathBuf>, String> {
     let mut builder = app.dialog().file();
     for (name, exts) in filters {
         builder = builder.add_filter(name, exts);
     }
     let picked = builder.blocking_pick_file();
-    Ok(picked.map(|p| p.into_path()).transpose().map_err(|e| e.to_string())?)
+    picked
+        .map(|p| p.into_path())
+        .transpose()
+        .map_err(|e| e.to_string())
 }
 
 async fn pick_folder(app: &AppHandle) -> Result<Option<PathBuf>, String> {
     let picked = app.dialog().file().blocking_pick_folder();
-    Ok(picked.map(|p| p.into_path()).transpose().map_err(|e| e.to_string())?)
-}
-
-#[tauri::command]
-pub fn get_session(state: State<'_, SidecarState>) -> Result<crate::sidecar::SessionInfo, String> {
-    state.session()
+    picked
+        .map(|p| p.into_path())
+        .transpose()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -176,7 +175,8 @@ pub async fn open_models_directory(
         })
         .or_else(|| {
             // Ultimate fallback: default Windows app data layout (display only).
-            std::env::var_os("LOCALAPPDATA").map(|p| PathBuf::from(p).join("FigureSmith").join("models"))
+            std::env::var_os("LOCALAPPDATA")
+                .map(|p| PathBuf::from(p).join("FigureSmith").join("models"))
         })
         .ok_or_else(|| "could not resolve models directory".to_string())?;
 
@@ -192,30 +192,176 @@ pub async fn open_models_directory(
     Ok(models_dir.to_string_lossy().into_owned())
 }
 
-/// Inject session + load desktop bridge after WebView navigates to sidecar UI.
-pub fn inject_session_bridge(webview: &tauri::Webview, session: &crate::sidecar::SessionInfo) {
-    // Escape token for JS string (token is hex, but keep defensive).
+/// Build the document-start request bridge for the authenticated sidecar page.
+///
+/// The token is captured by the wrapper closures and is never placed on a
+/// window-owned session object or in storage. Only exact-origin EventSource
+/// requests receive the scoped query credential required by browser SSE; the
+/// `/api` checks run before any vendor script can issue a fetch.
+pub fn build_initialization_script(session: &crate::sidecar::SessionInfo) -> String {
+    // JSON serialization prevents token/api values from becoming JavaScript.
+    // The session token is generated as hex today, but this remains defensive.
     let token_js = serde_json::to_string(&session.token).unwrap_or_else(|_| "\"\"".into());
     let api_base_js = serde_json::to_string(&session.api_base).unwrap_or_else(|_| "\"\"".into());
-    let script = format!(
+    format!(
         r#"(function(){{
-  try {{
-    window.__FIGURESMITH__ = {{
-      token: {token_js},
-      port: {port},
-      apiBase: {api_base_js}
-    }};
-    if (!window.__FIGURESMITH_BRIDGE_INSTALLED__) {{
-      var s = document.createElement('script');
-      s.src = '/figuresmith-bridge.js';
-      s.async = false;
-      document.head.appendChild(s);
+  "use strict";
+  var apiBase = {api_base_js};
+  var token = {token_js};
+  var allowedOrigin = null;
+
+  function normalize(value) {{
+    try {{
+      if (value instanceof Request) return new URL(value.url, window.location.href);
+      if (value instanceof URL) return new URL(value.href, window.location.href);
+      return new URL(String(value), window.location.href);
+    }} catch (_e) {{
+      return null;
     }}
-  }} catch (e) {{
-    console.error('FigureSmith session inject failed', e);
+  }}
+
+  function bootstrapError() {{
+    var error = new Error("AUTH_BOOTSTRAP_FAILED");
+    error.code = "AUTH_BOOTSTRAP_FAILED";
+    return error;
+  }}
+
+  function installFailedBridge() {{
+    try {{
+      Object.defineProperty(window, "__FIGURESMITH_AUTH_BOOTSTRAP_FAILED__", {{
+        value: true,
+        configurable: false,
+        enumerable: false,
+        writable: false
+      }});
+    }} catch (_e) {{
+      window.__FIGURESMITH_AUTH_BOOTSTRAP_FAILED__ = true;
+    }}
+
+    var originalFetch = window.fetch.bind(window);
+    window.fetch = function(input, init) {{
+      var url = normalize(input);
+      var path = url && url.pathname ? url.pathname : "";
+      if (path === "/api" || path.indexOf("/api/") === 0) {{
+        return Promise.reject(bootstrapError());
+      }}
+      return originalFetch(input, init);
+    }};
+
+    var OriginalEventSource = window.EventSource;
+    if (typeof OriginalEventSource === "function") {{
+      window.EventSource = function(input, config) {{
+        var url = normalize(input);
+        var path = url && url.pathname ? url.pathname : "";
+        if (path === "/api/events" || path.indexOf("/api/events/") === 0) {{
+          throw bootstrapError();
+        }}
+        return new OriginalEventSource(input, config);
+      }};
+      window.EventSource.prototype = OriginalEventSource.prototype;
+    }}
+  }}
+
+  try {{
+    var configured = new URL(apiBase);
+    if (configured.protocol !== "http:" ||
+        configured.hostname !== "127.0.0.1" ||
+        !configured.port ||
+        configured.username || configured.password ||
+        (configured.pathname !== "" && configured.pathname !== "/") ||
+        window.top !== window ||
+        window.location.origin !== configured.origin) {{
+      installFailedBridge();
+      return;
+    }}
+    allowedOrigin = configured.origin;
+  }} catch (_e) {{
+    installFailedBridge();
+    return;
+  }}
+
+  function isApiUrl(value) {{
+    var url = normalize(value);
+    if (!url || url.origin !== allowedOrigin) return false;
+    var path = url.pathname || "";
+    return path === "/api" || path.indexOf("/api/") === 0;
+  }}
+
+  function authHeaders(input, init) {{
+    var source = init && init.headers;
+    if (!source && input instanceof Request) source = input.headers;
+    var headers = new Headers(source || undefined);
+    if (!headers.has("Authorization") && !headers.has("authorization")) {{
+      headers.set("Authorization", "Bearer " + token);
+    }}
+    return headers;
+  }}
+
+  if (!window.__FIGURESMITH_BRIDGE_INSTALLED__) {{
+    var originalFetch = window.fetch.bind(window);
+    window.fetch = function(input, init) {{
+      if (!isApiUrl(input)) return originalFetch(input, init);
+      var headers = authHeaders(input, init);
+      var nextInit = Object.assign({{}}, init || {{}}, {{ headers: headers }});
+      if (input instanceof Request) return originalFetch(new Request(input, nextInit));
+      return originalFetch(input, nextInit);
+    }};
+
+    var OriginalEventSource = window.EventSource;
+    if (typeof OriginalEventSource === "function") {{
+      function BridgedEventSource(input, config) {{
+        var url = normalize(input);
+        if (url && url.origin === allowedOrigin &&
+            (url.pathname === "/api/events" || url.pathname.indexOf("/api/events/") === 0) &&
+            !url.searchParams.has("fs_token") && !url.searchParams.has("token")) {{
+          url.searchParams.set("fs_token", token);
+          return new OriginalEventSource(url.toString(), config);
+        }}
+        return new OriginalEventSource(input, config);
+      }}
+      BridgedEventSource.prototype = OriginalEventSource.prototype;
+      BridgedEventSource.CONNECTING = OriginalEventSource.CONNECTING;
+      BridgedEventSource.OPEN = OriginalEventSource.OPEN;
+      BridgedEventSource.CLOSED = OriginalEventSource.CLOSED;
+      window.EventSource = BridgedEventSource;
+    }}
+
+    Object.defineProperty(window, "__FIGURESMITH_BRIDGE_INSTALLED__", {{
+      value: true,
+      configurable: false,
+      enumerable: false,
+      writable: false
+    }});
+    Object.defineProperty(window, "__FIGURESMITH_DESKTOP_READY__", {{
+      value: true,
+      configurable: false,
+      enumerable: false,
+      writable: false
+    }});
   }}
 }})();"#,
-        port = session.port,
-    );
-    let _ = webview.eval(&script);
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_initialization_script;
+    use crate::sidecar::SessionInfo;
+
+    #[test]
+    fn bootstrap_is_document_start_and_does_not_publish_session_object() {
+        let script = build_initialization_script(&SessionInfo {
+            port: 45678,
+            api_base: "http://127.0.0.1:45678".into(),
+            token: "token-for-test-only".into(),
+        });
+        assert!(script.contains("window.top !== window"));
+        assert!(script.contains("window.location.origin"));
+        assert!(script.contains("Authorization"));
+        assert!(script.contains("AUTH_BOOTSTRAP_FAILED"));
+        assert!(script.contains("Promise.reject(bootstrapError())"));
+        assert!(script.contains("token-for-test-only"));
+        assert!(!script.contains("window.__FIGURESMITH__ ="));
+        assert!(script.contains("__FIGURESMITH_DESKTOP_READY__"));
+    }
 }

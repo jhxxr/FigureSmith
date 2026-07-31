@@ -7,11 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from figuresmith.models.errors import PathTraversalRejected
+from figuresmith.models.errors import DataDirNotWritable, PathTraversalRejected
 from figuresmith.models.paths import (
     get_app_data_dir,
     get_default_rmbg_model_dir,
     get_default_sam3_checkpoint,
+    resolve_app_paths,
     safe_join_under_root,
 )
 from figuresmith.models.registry import (
@@ -124,7 +125,7 @@ def test_get_app_data_dir_honors_env(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert get_app_data_dir() == (tmp_path / "custom-data").resolve()
 
 
-def test_get_app_data_dir_does_not_trust_unwritable_explicit_override(
+def test_get_app_data_dir_fails_fast_for_unwritable_explicit_override(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fake_local = tmp_path / "LocalAppData"
@@ -136,7 +137,36 @@ def test_get_app_data_dir_does_not_trust_unwritable_explicit_override(
     monkeypatch.delenv("FIGURESMITH_INSTALL_ROOT", raising=False)
     monkeypatch.setattr("figuresmith.models.paths._find_repo_root", lambda: None)
 
-    assert get_app_data_dir() == (fake_local / "FigureSmith").resolve()
+    with pytest.raises(DataDirNotWritable) as exc_info:
+        get_app_data_dir()
+    assert exc_info.value.code == "DATA_DIR_NOT_WRITABLE"
+
+
+def test_resolve_app_paths_creates_one_verified_layout(tmp_path: Path) -> None:
+    paths = resolve_app_paths(app_data_dir=tmp_path / "data")
+    assert paths.root == (tmp_path / "data").resolve()
+    assert paths.models == paths.root / "models"
+    assert paths.svg_cache == paths.root / "cache" / "svg-v1"
+    for directory in (
+        paths.models,
+        paths.jobs,
+        paths.uploads,
+        paths.outputs,
+        paths.temp,
+        paths.logs,
+        paths.svg_cache,
+    ):
+        assert directory.is_dir()
+        assert not list(directory.glob(".fs_probe_*.tmp"))
+
+
+def test_resolve_app_paths_reports_probe_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import figuresmith.models.paths as paths_mod
+
+    monkeypatch.setattr(paths_mod, "_ensure_writable_dir", lambda _path: False)
+    with pytest.raises(DataDirNotWritable) as exc_info:
+        resolve_app_paths(app_data_dir=tmp_path / "blocked")
+    assert exc_info.value.code == "DATA_DIR_NOT_WRITABLE"
 
 
 def test_get_app_data_dir_uses_install_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -177,3 +207,17 @@ def test_get_app_data_dir_falls_back_when_install_not_writable(
 
     got = get_app_data_dir()
     assert got == (fake_local / "FigureSmith").resolve()
+
+
+def test_repo_data_requires_explicit_development_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import figuresmith.models.paths as paths_mod
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    monkeypatch.delenv("FIGURESMITH_DATA_DIR", raising=False)
+    monkeypatch.delenv("FIGURESMITH_INSTALL_ROOT", raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    monkeypatch.setattr(paths_mod, "_find_repo_root", lambda: repo)
+
+    assert get_app_data_dir(development=True) == (repo / "data").resolve()
+    assert get_app_data_dir(development=False) == (tmp_path / "local" / "FigureSmith").resolve()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Optional
 
 from figuresmith.models.registry import ModelPaths, export_path_env, resolve_model_paths
@@ -19,6 +20,7 @@ def prepare_figuresmith_runtime(
     strict_offline: Optional[bool] = None,
     default_strict: bool = True,
     apply_env: bool = True,
+    app_data_dir: Optional[Path] = None,
 ) -> dict[str, str]:
     """Prepare process environment for FigureSmith desktop/local launches.
 
@@ -46,7 +48,7 @@ def prepare_figuresmith_runtime(
             applied[STRICT_OFFLINE_ENV] = os.environ[STRICT_OFFLINE_ENV]
 
     # Inject resolved model paths into env for vendor subprocesses if unset.
-    paths = resolve_model_paths(use_defaults=True)
+    paths = resolve_model_paths(use_defaults=True, app_data_dir=app_data_dir)
     for key, value in export_path_env(paths).items():
         if key not in os.environ or not os.environ[key].strip():
             os.environ[key] = value

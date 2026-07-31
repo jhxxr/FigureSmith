@@ -27,7 +27,8 @@ Also includes welcome/models UX, local-only SAM UI, Tauri sidecar on **127.0.0.1
 | `FIGURESMITH_SAM3_CHECKPOINT` | Path to local SAM3 `.pt` checkpoint |
 | `FIGURESMITH_SAM3_BPE` | Optional BPE vocab path |
 | `FIGURESMITH_RMBG_MODEL_PATH` | Path to local RMBG-2.0 model directory |
-| `FIGURESMITH_DATA_DIR` | App data root (models/settings). Default: `<install_or_repo>/data`, not forced to C: profile |
+| `FIGURESMITH_DATA_DIR` | Explicit app data root (models/settings/uploads/outputs). It must pass a writable create/flush/replace/delete probe; otherwise startup fails with `DATA_DIR_NOT_WRITABLE`. |
+| `FIGURESMITH_DEV_MODE` | Set to `1` only for source development to allow repository `data/`; release/portable mode uses adjacent `data/` then LocalAppData fallback. |
 | `FIGURESMITH_ALLOW_UNPINNED_MODELS` | Dev: allow imports that do not match official pins |
 | `FIGURESMITH_SESSION_TOKEN` | Desktop sidecar Bearer token (set by Tauri; do not commit) |
 | `FIGURESMITH_DISABLE_AUTH` | Test/dev bypass for auth middleware (`1` = off) |

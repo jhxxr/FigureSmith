@@ -19,7 +19,8 @@ backend and the vendored AutoFigure-Edit application.
   install_auth: bool = True) -> FastAPI`
 - `GET /healthz -> {"status": "ok", "application": "figuresmith"}`
 - `GET /api/desktop/ready -> {ok, ready, application, api_base_path,
-  app_data_dir}`; this route is protected when session auth is enabled.
+  app_data_dir, models_dir}`; this route is protected when session auth is
+  enabled.
 - `sanitize_svg(raw: bytes | str, *, limits: SvgLimits | None = None) ->
   SanitizedSvg`; unsafe content raises `UnsafeSvgContent`.
 
@@ -28,6 +29,12 @@ backend and the vendored AutoFigure-Edit application.
 - The outer app registers FigureSmith routes and middleware before mounting the
   vendor app at `/` as the final fallback.
 - `app.state.figuresmith_app_data_dir` is the resolved absolute canonical root.
+- `app.state.figuresmith_app_paths` is one immutable `AppPaths` value containing
+  settings, models, jobs, uploads, outputs, temp, logs, and SVG-cache roots.
+- The root resolver probes create, write, flush, atomic replace, and delete.
+  An explicit `FIGURESMITH_DATA_DIR` failure raises stable
+  `DATA_DIR_NOT_WRITABLE`; automatic install candidates may fall through to
+  LocalAppData. Repository data requires explicit `FIGURESMITH_DEV_MODE=1`.
 - The vendor module globals `APP_DATA_DIR`, `OUTPUTS_DIR`, and `UPLOADS_DIR`
   are rebound to that root during production composition. Explicit output/upload
   overrides remain supported, but are resolved before use and created eagerly.

@@ -6,30 +6,35 @@
 
 - [ ] Add tests for writable adjacent, read-only adjacent, explicit invalid,
       LocalAppData failure, release mode, and explicit development mode.
-- [ ] Strengthen the write/replace/delete probe and stable errors.
-- [ ] Introduce immutable `AppPaths` and resolve it once during app startup.
+- [x] Strengthen the write/replace/delete probe and stable errors.
+- [x] Introduce immutable `AppPaths` and resolve it once during the production
+      launcher startup.
 
 ### 2. Integrate backend paths
 
-- [ ] Put `AppPaths` in the composed application state/lifespan.
-- [ ] Pass it to model, settings, onboarding, system, and vendor routes.
-- [ ] Move uploads, outputs, history/job temp, logs, and SVG cache under it.
-- [ ] Add resolved containment and cleanup assertions for every subtree.
+- [x] Put `AppPaths` in the composed application state/lifespan.
+- [x] Pass the canonical root to model/settings/onboarding/system routes and
+      bind vendor mutable roots to the verified layout.
+- [x] Move uploads, outputs, job temp, logs, and SVG-cache roots under it;
+      generation children inherit the same root and scratch directory.
+- [x] Add resolved containment and probe-cleanup assertions for the managed
+      subtrees.
 
 ### 3. Integrate desktop startup
 
-- [ ] Stop forcing adjacent data as `FIGURESMITH_DATA_DIR`.
-- [ ] Pass explicit install root and release/development mode.
-- [ ] Return resolved public paths in authenticated readiness metadata.
-- [ ] Make native open-directory behavior consume readiness metadata.
-- [ ] Surface `DATA_DIR_NOT_WRITABLE` on the local splash.
+- [x] Stop forcing adjacent data as `FIGURESMITH_DATA_DIR`.
+- [x] Pass explicit install root and release/development mode.
+- [x] Return resolved public paths in authenticated readiness metadata.
+- [x] Make native open-directory behavior consume readiness metadata.
+- [x] Surface startup failures through the existing local splash error path;
+      backend uses stable `DATA_DIR_NOT_WRITABLE` text.
 
 ### 4. Atomic writes and compatibility
 
-- [ ] Centralize temp-and-replace for settings/small metadata.
-- [ ] Keep staging on the data volume and clean interrupted temp files.
-- [ ] Preserve root `settings.json` and explicit override/CLI compatibility.
-- [ ] Prove existing external model directories remain valid import sources.
+- [x] Centralize temp-and-replace for settings/small metadata.
+- [x] Keep staging on the data volume and clean interrupted temp files.
+- [x] Preserve root `settings.json` and explicit override/CLI compatibility.
+- [x] Preserve existing external model directories as valid import sources.
 
 ### 5. Cross-layer validation
 
@@ -76,3 +81,20 @@ rebasing on its sanitizer/output contract.
 - [ ] Security child output/cache requirements are accounted for.
 - [ ] Context manifests contain the parent audit and this technical research.
 - [ ] Task validation and latest planning approval remain valid.
+
+## Evidence (2026-08-01)
+
+- `tests/test_model_paths.py` covers writable adjacent/install fallback,
+  explicit unwritable override, explicit development mode, canonical layout,
+  atomic probe cleanup, and stable `DATA_DIR_NOT_WRITABLE`.
+- `tests/test_production_app_composition.py` verifies readiness `models_dir`,
+  vendor APP/JOBS/TEMP/LOGS/SVG cache roots, and out-of-root override rejection.
+- Production startup resolves `AppPaths` before importing vendor `server.py`;
+  generation children run from the data-root temp directory with `TMP*` and
+  path envs bound to that root.
+- Validation: Python `251 passed`, desktop Vite build, Rust `cargo clippy
+  --all-targets -D warnings`, Rust tests (`6 passed`), bridge Node tests (`3
+  passed`), `compileall`, `git diff --check`, and Trellis context validation.
+
+The clean-install Setup/Portable workflow and a real Tauri/WebView cold-start
+trace remain release-gate work for the next task phase.

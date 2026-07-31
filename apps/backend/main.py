@@ -169,21 +169,34 @@ def _mount_figuresmith_ui(app) -> None:
         print(f"[FigureSmith] mounted {mounted} Phase 5 UI asset route(s)")
 
 
-def _configure_vendor_data_root(vendor_app, app_data_dir: Path) -> None:
+def _configure_vendor_data_root(vendor_app, app_paths) -> None:
     """Point the vendored server's mutable directories at the canonical root."""
     vendor_server = sys.modules.get("server")
     if vendor_server is None or getattr(vendor_server, "app", None) is not vendor_app:
         return
 
-    outputs = Path(
-        os.environ.get("FIGURESMITH_OUTPUTS_DIR", str(app_data_dir / "outputs"))
-    ).expanduser().resolve()
-    uploads = Path(
-        os.environ.get("FIGURESMITH_UPLOADS_DIR", str(app_data_dir / "uploads"))
-    ).expanduser().resolve()
+    from figuresmith.models.errors import DataDirNotWritable
+    from figuresmith.models.paths import ensure_under_root
+
+    def mutable_override(name: str, default: Path) -> Path:
+        raw = os.environ.get(name)
+        candidate = Path(raw).expanduser() if raw and raw.strip() else default
+        try:
+            return ensure_under_root(app_paths.root, candidate)
+        except Exception as exc:
+            raise DataDirNotWritable(
+                detail=f"{name} must remain under the application data root"
+            ) from exc
+
+    outputs = mutable_override("FIGURESMITH_OUTPUTS_DIR", app_paths.outputs)
+    uploads = mutable_override("FIGURESMITH_UPLOADS_DIR", app_paths.uploads)
     outputs.mkdir(parents=True, exist_ok=True)
     uploads.mkdir(parents=True, exist_ok=True)
-    vendor_server.APP_DATA_DIR = app_data_dir
+    vendor_server.APP_DATA_DIR = app_paths.root
+    vendor_server.JOBS_DIR = app_paths.jobs
+    vendor_server.TEMP_DIR = app_paths.temp
+    vendor_server.LOGS_DIR = app_paths.logs
+    vendor_server.SVG_CACHE_DIR = app_paths.svg_cache
     vendor_server.OUTPUTS_DIR = outputs
     vendor_server.UPLOADS_DIR = uploads
 
@@ -192,6 +205,7 @@ def create_production_app(
     vendor_app=None,
     *,
     app_data_dir: Path | None = None,
+    app_paths=None,
     install_auth: bool = True,
 ):
     """Create the production composition used by Uvicorn and desktop smoke.
@@ -202,20 +216,25 @@ def create_production_app(
     ordering or production behavior.
     """
     from fastapi import FastAPI
+    from figuresmith.api.models_routes import mount_models_routes
+    from figuresmith.api.system_routes import mount_system_routes
+    from figuresmith.models.paths import resolve_app_paths
 
+    if app_paths is not None:
+        resolved_paths = app_paths
+    else:
+        resolved_paths = resolve_app_paths(app_data_dir=app_data_dir)
+
+    # Validate and construct the canonical layout before importing vendor
+    # server.py. Its module-level initialization creates mutable directories.
     if vendor_app is None:
         vendor_app = _load_vendor_app()
 
     app = FastAPI(title="FigureSmith", version="0.6.0")
-    from figuresmith.api.models_routes import mount_models_routes
-    from figuresmith.api.system_routes import mount_system_routes
-    from figuresmith.models.paths import get_app_data_dir
-
-    resolved_data_dir = (
-        Path(app_data_dir).resolve() if app_data_dir is not None else get_app_data_dir()
-    )
+    resolved_data_dir = resolved_paths.root
+    app.state.figuresmith_app_paths = resolved_paths
     app.state.figuresmith_app_data_dir = str(resolved_data_dir)
-    _configure_vendor_data_root(vendor_app, resolved_data_dir)
+    _configure_vendor_data_root(vendor_app, resolved_paths)
 
     mount_models_routes(app, app_data_dir=resolved_data_dir)
     mount_system_routes(app)
@@ -235,6 +254,7 @@ def create_production_app(
             "app_data_dir": str(
                 getattr(request.app.state, "figuresmith_app_data_dir", str(resolved_data_dir))
             ),
+            "models_dir": str(resolved_paths.models),
         }
 
     _mount_desktop_bridge(app)
@@ -314,7 +334,21 @@ def main(argv: list[str] | None = None) -> None:
     else:
         strict = bool(args.strict_offline)
 
-    applied = prepare_figuresmith_runtime(strict_offline=strict, default_strict=True)
+    try:
+        from figuresmith.models.paths import resolve_app_paths
+
+        app_paths = resolve_app_paths()
+        applied = prepare_figuresmith_runtime(
+            strict_offline=strict,
+            default_strict=True,
+            app_data_dir=app_paths.root,
+        )
+    except Exception as exc:
+        from figuresmith.models.errors import DataDirNotWritable
+
+        if isinstance(exc, DataDirNotWritable):
+            raise SystemExit(str(exc)) from exc
+        raise
     if strict:
         print(f"[FigureSmith] strict offline enabled; env applied: {sorted(applied.keys())}")
     else:
@@ -331,7 +365,14 @@ def main(argv: list[str] | None = None) -> None:
 
     vendor_root = get_vendor_root()
     ensure_vendor_on_sys_path()
-    app = create_production_app()
+    try:
+        app = create_production_app(app_paths=app_paths)
+    except Exception as exc:
+        from figuresmith.models.errors import DataDirNotWritable
+
+        if isinstance(exc, DataDirNotWritable):
+            raise SystemExit(str(exc)) from exc
+        raise
 
     try:
         import uvicorn

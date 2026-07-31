@@ -92,6 +92,12 @@ class PathTraversalRejected(FigureSmithError):
     message_en = "Rejected unsafe model path (path traversal)"
 
 
+class DataDirNotWritable(FigureSmithError):
+    code = "DATA_DIR_NOT_WRITABLE"
+    message_zh = "应用数据目录不可写"
+    message_en = "Application data directory is not writable"
+
+
 class ModelImportError(FigureSmithError):
     """Base class for Phase 3 model import failures."""
 

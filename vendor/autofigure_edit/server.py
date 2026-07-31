@@ -34,7 +34,7 @@ def _runtime_data_dir() -> Path:
         from figuresmith.models.paths import get_app_data_dir
 
         return get_app_data_dir()
-    except Exception:
+    except ImportError:
         # Keep the vendored server independently runnable if the FigureSmith
         # package is not on ``PYTHONPATH``. This fallback is still outside the
         # source tree and is only used by standalone upstream development.
@@ -46,12 +46,28 @@ def _runtime_data_dir() -> Path:
 
 
 APP_DATA_DIR = _runtime_data_dir()
+JOBS_DIR = Path(
+    os.environ.get("FIGURESMITH_JOBS_DIR", str(APP_DATA_DIR / "jobs"))
+).expanduser().resolve()
+TEMP_DIR = Path(
+    os.environ.get("FIGURESMITH_TEMP_DIR", str(APP_DATA_DIR / "temp"))
+).expanduser().resolve()
+LOGS_DIR = Path(
+    os.environ.get("FIGURESMITH_LOGS_DIR", str(APP_DATA_DIR / "logs"))
+).expanduser().resolve()
+SVG_CACHE_DIR = Path(
+    os.environ.get("FIGURESMITH_SVG_CACHE_DIR", str(APP_DATA_DIR / "cache" / "svg-v1"))
+).expanduser().resolve()
 OUTPUTS_DIR = Path(
     os.environ.get("FIGURESMITH_OUTPUTS_DIR", str(APP_DATA_DIR / "outputs"))
 ).expanduser().resolve()
 UPLOADS_DIR = Path(
     os.environ.get("FIGURESMITH_UPLOADS_DIR", str(APP_DATA_DIR / "uploads"))
 ).expanduser().resolve()
+JOBS_DIR.mkdir(parents=True, exist_ok=True)
+TEMP_DIR.mkdir(parents=True, exist_ok=True)
+LOGS_DIR.mkdir(parents=True, exist_ok=True)
+SVG_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -378,6 +394,16 @@ def run_job(req: RunRequest) -> JSONResponse:
 
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
+    # Keep child scratch files and accidental relative writes off the immutable
+    # vendor/runtime tree. All paths remain on the resolved application volume.
+    env["FIGURESMITH_DATA_DIR"] = str(APP_DATA_DIR)
+    env["FIGURESMITH_JOBS_DIR"] = str(JOBS_DIR)
+    env["FIGURESMITH_TEMP_DIR"] = str(TEMP_DIR)
+    env["FIGURESMITH_LOGS_DIR"] = str(LOGS_DIR)
+    env["FIGURESMITH_SVG_CACHE_DIR"] = str(SVG_CACHE_DIR)
+    env["TMPDIR"] = str(TEMP_DIR)
+    env["TEMP"] = str(TEMP_DIR)
+    env["TMP"] = str(TEMP_DIR)
     # --- FIGURESMITH-BEGIN: server-child-env ---
     if strict_offline:
         env["FIGURESMITH_STRICT_OFFLINE"] = "1"
@@ -419,7 +445,7 @@ def run_job(req: RunRequest) -> JSONResponse:
         text=True,
         bufsize=1,
         env=env,
-        cwd=str(BASE_DIR),
+        cwd=str(TEMP_DIR),
     )
 
     job = Job(

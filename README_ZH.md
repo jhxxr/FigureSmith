@@ -30,7 +30,8 @@
 | `FIGURESMITH_SAM3_CHECKPOINT` | 本地 SAM3 权重路径 |
 | `FIGURESMITH_SAM3_BPE` | 可选 BPE 词表路径 |
 | `FIGURESMITH_RMBG_MODEL_PATH` | 本地 RMBG-2.0 模型目录 |
-| `FIGURESMITH_DATA_DIR` | 可选应用数据根目录 |
+| `FIGURESMITH_DATA_DIR` | 显式应用数据根目录（模型/设置/上传/输出）；必须通过可写探针，否则启动以 `DATA_DIR_NOT_WRITABLE` 失败 |
+| `FIGURESMITH_DEV_MODE` | 仅源码开发时设为 `1` 才允许使用仓库 `data/`；发布/Portable 模式先尝试安装目录旁 `data/`，再回退到 LocalAppData |
 | `FIGURESMITH_ALLOW_UNPINNED_MODELS` | 开发：允许与官方 pin 不匹配的导入 |
 | `FIGURESMITH_SESSION_TOKEN` | 桌面 Sidecar 会话令牌（由 Tauri 注入，勿提交） |
 | `FIGURESMITH_DISABLE_AUTH` | 测试旁路鉴权（`1` 关闭） |

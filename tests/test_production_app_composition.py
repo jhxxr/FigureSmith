@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from main import create_production_app
+from figuresmith.models.errors import DataDirNotWritable
 
 
 def _vendor_app() -> FastAPI:
@@ -50,9 +52,20 @@ def test_production_factory_exposes_one_canonical_data_root(tmp_path: Path, monk
         ready = client.get("/api/desktop/ready")
         assert ready.status_code == 200
         assert Path(ready.json()["app_data_dir"]) == tmp_path.resolve()
+        assert Path(ready.json()["models_dir"]) == (tmp_path / "models").resolve()
         models = client.get("/api/models")
         assert models.status_code == 200
         assert Path(models.json()["app_data_dir"]) == tmp_path.resolve()
+
+
+def test_production_factory_rejects_mutable_paths_outside_root(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("FIGURESMITH_DISABLE_AUTH", "1")
+    monkeypatch.setenv("FIGURESMITH_OUTPUTS_DIR", str(tmp_path / "outside-outputs"))
+    with pytest.raises(DataDirNotWritable) as exc_info:
+        create_production_app(app_data_dir=tmp_path / "data", install_auth=False)
+    assert exc_info.value.code == "DATA_DIR_NOT_WRITABLE"
 
 
 def test_production_factory_smokes_real_vendor_routes(tmp_path: Path, monkeypatch) -> None:
@@ -69,6 +82,10 @@ def test_production_factory_smokes_real_vendor_routes(tmp_path: Path, monkeypatc
     import server
 
     assert Path(server.APP_DATA_DIR) == tmp_path.resolve()
+    assert Path(server.JOBS_DIR) == (tmp_path / "jobs").resolve()
+    assert Path(server.TEMP_DIR) == (tmp_path / "temp").resolve()
+    assert Path(server.LOGS_DIR) == (tmp_path / "logs").resolve()
+    assert Path(server.SVG_CACHE_DIR) == (tmp_path / "cache" / "svg-v1").resolve()
     assert Path(server.OUTPUTS_DIR) == (tmp_path / "outputs").resolve()
     assert Path(server.UPLOADS_DIR) == (tmp_path / "uploads").resolve()
 

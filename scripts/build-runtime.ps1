@@ -140,6 +140,7 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 $env:PYTHONPATH = "$(Join-Path $Root 'app\backend');$(Join-Path $Root 'app\vendor\autofigure_edit')"
 $env:FIGURESMITH_STRICT_OFFLINE = if ($env:FIGURESMITH_STRICT_OFFLINE) { $env:FIGURESMITH_STRICT_OFFLINE } else { "1" }
+$env:FIGURESMITH_INSTALL_ROOT = if ($env:FIGURESMITH_INSTALL_ROOT) { $env:FIGURESMITH_INSTALL_ROOT } else { $Root }
 $py = Join-Path $Root ".venv\Scripts\python.exe"
 if (-not (Test-Path $py)) { $py = "python" }
 & $py (Join-Path $Root "app\backend\main.py") @args

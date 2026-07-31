@@ -108,6 +108,7 @@ impl SidecarState {
 
         // Build child env carefully — never log token.
         let mut cmd = Command::new(&python);
+        let dev_mode = std::env::var("FIGURESMITH_DEV_MODE").ok();
         cmd.arg(main_py.as_os_str())
             .arg("--host")
             .arg(BIND_HOST)
@@ -135,7 +136,14 @@ impl SidecarState {
             .env("PYTHONPATH", &pythonpath)
             .env("PYTHONUNBUFFERED", "1")
             // Ensure tests/dev bypass does not leak into desktop child.
-            .env_remove("FIGURESMITH_DISABLE_AUTH");
+            .env_remove("FIGURESMITH_DISABLE_AUTH")
+            // Do not inherit an accidental development mode from the shell;
+            // the explicit value below is the only mode the child receives.
+            .env_remove("FIGURESMITH_DEV_MODE");
+
+        if let Some(value) = dev_mode.as_deref() {
+            cmd.env("FIGURESMITH_DEV_MODE", value);
+        }
 
         // Data dir: prefer explicit env; otherwise store next to the desktop
         // executable (install/portable location) so large models are not forced

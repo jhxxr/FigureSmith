@@ -38,6 +38,11 @@ if (-not $env:FIGURESMITH_STRICT_OFFLINE) {
 if (-not $env:FIGURESMITH_FORCE_LOCAL_SAM) {
     $env:FIGURESMITH_FORCE_LOCAL_SAM = "1"
 }
+# This script is the explicit source-development entrypoint. Release/runtime
+# launchers pass FIGURESMITH_INSTALL_ROOT instead and leave dev mode disabled.
+if (-not $env:FIGURESMITH_DEV_MODE) {
+    $env:FIGURESMITH_DEV_MODE = "1"
+}
 if ($env:FIGURESMITH_STRICT_OFFLINE -eq "1") {
     $env:HF_HUB_OFFLINE = "1"
     $env:TRANSFORMERS_OFFLINE = "1"

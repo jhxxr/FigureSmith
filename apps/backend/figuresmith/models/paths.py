@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import os
 import sys
-import tempfile
+import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Union
 
-from figuresmith.models.errors import PathTraversalRejected
+from figuresmith.models.errors import DataDirNotWritable, PathTraversalRejected
 
 PathLike = Union[str, Path]
 
@@ -17,6 +18,7 @@ DEFAULT_SAM3_REL = Path("models") / "sam3" / "sam3.pt"
 DEFAULT_RMBG_REL = Path("models") / "rmbg-2.0"
 DEFAULT_SETTINGS_NAME = "settings.json"
 DATA_DIR_NAME = "data"
+DEV_MODE_ENV = "FIGURESMITH_DEV_MODE"
 
 
 def _find_repo_root() -> Optional[Path]:
@@ -31,15 +33,30 @@ def _find_repo_root() -> Optional[Path]:
 
 
 def _ensure_writable_dir(path: Path) -> bool:
-    """Create ``path`` if needed and verify it is writable."""
+    """Create ``path`` and verify write, flush, atomic replace, and delete."""
+    first: Optional[Path] = None
+    second: Optional[Path] = None
     try:
         path.mkdir(parents=True, exist_ok=True)
-        fd, name = tempfile.mkstemp(prefix=".fs_write_", dir=str(path))
-        os.close(fd)
-        Path(name).unlink(missing_ok=True)
+        first = path / f".fs_probe_{uuid.uuid4().hex}.tmp"
+        second = path / f".fs_probe_{uuid.uuid4().hex}.tmp"
+        with first.open("wb") as handle:
+            handle.write(b"figuresmith-writable-probe\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        second.touch(exist_ok=False)
+        os.replace(first, second)
+        second.unlink()
         return True
     except OSError:
         return False
+    finally:
+        for probe in (first, second):
+            if probe is not None:
+                try:
+                    probe.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
 
 def _localappdata_fallback() -> Path:
@@ -56,16 +73,26 @@ def _localappdata_fallback() -> Path:
     return Path.home() / ".local" / "share" / "figuresmith"
 
 
-def get_app_data_dir() -> Path:
+def _env_flag(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _data_dir_error(path: Path) -> DataDirNotWritable:
+    return DataDirNotWritable(detail=f"write probe failed for application data root: {path}")
+
+
+def get_app_data_dir(*, development: Optional[bool] = None) -> Path:
     """Return the FigureSmith application data directory (models, settings, …).
 
     Resolution order (first writable wins):
 
     1. ``FIGURESMITH_DATA_DIR`` — explicit user/admin override
     2. ``FIGURESMITH_INSTALL_ROOT/data`` — installer/portable root
-    3. ``<executable_dir>/data`` — when frozen or executable name looks like FigureSmith
-    4. ``<repo_root>/data`` — source / Runtime Pack layout (same drive as install tree)
-    5. ``%LOCALAPPDATA%\\FigureSmith`` (or macOS/Linux equivalent) — last resort
+    3. ``<repo_root>/data`` — only when explicit development mode is enabled
+    4. ``%LOCALAPPDATA%\\FigureSmith`` (or macOS/Linux equivalent) — last resort
        when the install directory is not writable (e.g. Program Files)
 
     This prefers “next to the app” so large model imports stay on the install
@@ -74,8 +101,9 @@ def get_app_data_dir() -> Path:
     override = os.environ.get("FIGURESMITH_DATA_DIR")
     if override and override.strip():
         path = Path(override).expanduser().resolve()
-        if _ensure_writable_dir(path):
-            return path
+        if not _ensure_writable_dir(path):
+            raise _data_dir_error(path)
+        return path
 
     candidates: list[Path] = []
 
@@ -83,26 +111,74 @@ def get_app_data_dir() -> Path:
     if install_root and install_root.strip():
         candidates.append(Path(install_root).expanduser() / DATA_DIR_NAME)
 
-    try:
-        exe = Path(sys.executable).resolve()
-        frozen = bool(getattr(sys, "frozen", False))
-        name_l = exe.name.lower()
-        if frozen or "figuresmith" in name_l:
-            candidates.append(exe.parent / DATA_DIR_NAME)
-    except (OSError, RuntimeError):
-        pass
-
-    repo = _find_repo_root()
-    if repo is not None:
-        candidates.append(repo / DATA_DIR_NAME)
+    dev_enabled = _env_flag(DEV_MODE_ENV, default=False) if development is None else development
+    if dev_enabled:
+        repo = _find_repo_root()
+        if repo is not None:
+            candidates.append(repo / DATA_DIR_NAME)
 
     for cand in candidates:
         if _ensure_writable_dir(cand):
             return cand.resolve()
 
     fallback = _localappdata_fallback()
-    _ensure_writable_dir(fallback)
-    return fallback.resolve()
+    if _ensure_writable_dir(fallback):
+        return fallback.resolve()
+    raise _data_dir_error(fallback)
+
+
+@dataclass(frozen=True)
+class AppPaths:
+    """Canonical mutable directories derived from one verified data root."""
+
+    root: Path
+    settings: Path
+    models: Path
+    jobs: Path
+    uploads: Path
+    outputs: Path
+    temp: Path
+    logs: Path
+    svg_cache: Path
+
+
+def resolve_app_paths(
+    *,
+    app_data_dir: Optional[Path] = None,
+    development: Optional[bool] = None,
+) -> AppPaths:
+    """Resolve and eagerly probe the complete application data layout."""
+    root = (
+        Path(app_data_dir).expanduser().resolve()
+        if app_data_dir is not None
+        else get_app_data_dir(development=development)
+    )
+    if not _ensure_writable_dir(root):
+        raise _data_dir_error(root)
+
+    paths = AppPaths(
+        root=root,
+        settings=root / DEFAULT_SETTINGS_NAME,
+        models=root / "models",
+        jobs=root / "jobs",
+        uploads=root / "uploads",
+        outputs=root / "outputs",
+        temp=root / "temp",
+        logs=root / "logs",
+        svg_cache=root / "cache" / "svg-v1",
+    )
+    for directory in (
+        paths.models,
+        paths.jobs,
+        paths.uploads,
+        paths.outputs,
+        paths.temp,
+        paths.logs,
+        paths.svg_cache,
+    ):
+        if not _ensure_writable_dir(directory):
+            raise _data_dir_error(directory)
+    return paths
 
 
 def get_models_root(app_data_dir: Optional[Path] = None) -> Path:
@@ -129,10 +205,11 @@ def get_settings_path(
 ) -> Path:
     """Return preferred settings.json path.
 
-    When ``prefer_dev`` is True and ``<repo>/.figuresmith/settings.json`` exists,
-    that file wins for developer workflows; otherwise app data settings path.
+    When ``prefer_dev`` is True, ``FIGURESMITH_DEV_MODE`` is enabled, and
+    ``<repo>/.figuresmith/settings.json`` exists, that file wins for developer
+    workflows; production resolves settings under the verified app root.
     """
-    if prefer_dev:
+    if prefer_dev and _env_flag(DEV_MODE_ENV, default=False):
         root = repo_root if repo_root is not None else _find_repo_root()
         if root is not None:
             dev_settings = Path(root) / ".figuresmith" / DEFAULT_SETTINGS_NAME

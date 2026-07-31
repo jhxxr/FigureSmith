@@ -26,7 +26,8 @@ Optional env:
 |----------|---------|
 | `FIGURESMITH_PYTHON` | Absolute path to Python interpreter for the sidecar |
 | `FIGURESMITH_REPO_ROOT` | Override monorepo root detection |
-| `FIGURESMITH_DATA_DIR` | App data root (forwarded to sidecar) |
+| `FIGURESMITH_DATA_DIR` | Explicit app data root (forwarded to sidecar; must be writable) |
+| `FIGURESMITH_DEV_MODE` | Explicit source-development mode; repository data is never inferred in release mode |
 
 ## Develop
 

@@ -3,7 +3,7 @@
   "name": "writable-application-data",
   "title": "Writable application data contract",
   "description": "Route every mutable file to a verified writable application-data location.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

@@ -3,7 +3,7 @@
   "name": "runtime-assembly-sidecar-resolver",
   "title": "Runtime assembly and sidecar resolver",
   "description": "Assemble the complete Runtime Directory offline and make release mode resolve it without system or repository fallbacks.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

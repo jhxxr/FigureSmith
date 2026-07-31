@@ -4,11 +4,11 @@
 - [ ] Implement empty-stage CPython/package/SAM3/app/legal assembly.
 - [ ] Configure isolated `_pth` and scrub Python/environment influence.
 - [ ] Consolidate application copy/exclusion logic under one structured helper.
-- [ ] Add manifest-aware no-weight/no-cache validation.
+- [x] Add manifest-aware no-weight/no-cache validation.
 - [ ] Run isolated import and production app-factory smoke from staging.
-- [ ] Generate and independently verify the full runtime manifest.
+- [x] Generate and independently verify the full runtime manifest.
 - [ ] Refactor Rust into explicit development/release resolver implementations.
-- [ ] Resolve release paths through Tauri Resource and validate identity/files.
+- [x] Resolve release paths through Tauri Resource and validate identity/files.
 - [ ] Add hostile PATH/current-dir and missing/corrupt/version tests.
 - [ ] Run two clean offline assemblies and compare manifests.
 

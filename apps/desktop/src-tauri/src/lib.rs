@@ -7,7 +7,7 @@ use commands::{
     build_initialization_script, import_rmbg_archive, import_rmbg_folder, import_sam3_model,
     open_models_directory,
 };
-use sidecar::{resolve_repo_root, SidecarState};
+use sidecar::{resolve_runtime_root, SidecarState};
 use tauri::{
     ipc::CapabilityBuilder,
     menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
@@ -80,7 +80,8 @@ pub fn run() {
             });
 
             // Start Python sidecar before the remote UI becomes useful.
-            let repo = match resolve_repo_root() {
+            let resource_dir = handle.path().resource_dir().ok();
+            let repo = match resolve_runtime_root(resource_dir) {
                 Ok(repo) => repo,
                 Err(err) => {
                     report_startup_error(app.handle(), &err);

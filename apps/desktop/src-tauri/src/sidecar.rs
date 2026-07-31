@@ -40,6 +40,16 @@ struct SidecarInner {
     ready: bool,
 }
 
+#[derive(Debug, Clone)]
+struct RuntimeLayout {
+    root: PathBuf,
+    backend_dir: PathBuf,
+    vendor_dir: PathBuf,
+    main_py: PathBuf,
+    python: PathBuf,
+    release: bool,
+}
+
 /// Owns a newly spawned child until startup has completed.
 ///
 /// `std::process::Child` does not kill the OS process when it is dropped. The
@@ -83,22 +93,16 @@ impl Drop for PendingChild {
 }
 
 impl SidecarState {
-    pub fn start(repo_root: PathBuf) -> Result<Self, String> {
+    pub fn start(runtime_root: PathBuf) -> Result<Self, String> {
         let port = find_free_port()?;
         let token = generate_token();
         let sse_ticket = generate_token();
         let sse_ticket_expires_at = unix_now_secs().saturating_add(SSE_TICKET_TTL_SECS);
-        let python = resolve_python(&repo_root)?;
-        let main_py = repo_root.join("apps").join("backend").join("main.py");
-        if !main_py.is_file() {
-            return Err(format!(
-                "backend entry not found: {} (set FIGURESMITH_REPO_ROOT?)",
-                main_py.display()
-            ));
-        }
-
-        let backend_dir = repo_root.join("apps").join("backend");
-        let vendor_dir = repo_root.join("vendor").join("autofigure_edit");
+        let layout = resolve_runtime_layout(&runtime_root)?;
+        let python = layout.python.clone();
+        let main_py = layout.main_py.clone();
+        let backend_dir = layout.backend_dir.clone();
+        let vendor_dir = layout.vendor_dir.clone();
         let pythonpath = format!(
             "{}{}{}",
             backend_dir.display(),
@@ -114,7 +118,7 @@ impl SidecarState {
             .arg(BIND_HOST)
             .arg("--port")
             .arg(port.to_string())
-            .current_dir(&repo_root)
+            .current_dir(&layout.root)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -141,7 +145,10 @@ impl SidecarState {
             // the explicit value below is the only mode the child receives.
             .env_remove("FIGURESMITH_DEV_MODE");
 
-        if let Some(value) = dev_mode.as_deref() {
+        if layout.release {
+            cmd.env("FIGURESMITH_DEV_MODE", "0");
+            cmd.env("FIGURESMITH_RELEASE_MODE", "1");
+        } else if let Some(value) = dev_mode.as_deref() {
             cmd.env("FIGURESMITH_DEV_MODE", value);
         }
 
@@ -169,7 +176,8 @@ impl SidecarState {
         }
 
         eprintln!(
-            "[FigureSmith] starting sidecar: python={} host={} port={} token_len={} strict_offline=1",
+            "[FigureSmith] starting sidecar: mode={} python={} host={} port={} token_len={} strict_offline=1",
+            if layout.release { "release" } else { "development" },
             python.display(),
             BIND_HOST,
             port,
@@ -362,7 +370,23 @@ pub fn find_free_port() -> Result<u16, String> {
     Ok(port)
 }
 
-fn resolve_python(repo_root: &Path) -> Result<PathBuf, String> {
+fn resolve_python(runtime_root: &Path, release: bool) -> Result<PathBuf, String> {
+    if release {
+        let candidates = [
+            runtime_root.join("python.exe"),
+            runtime_root.join("python").join("python.exe"),
+        ];
+        for candidate in candidates {
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
+        }
+        return Err(format!(
+            "packaged Python runtime missing under {}",
+            runtime_root.display()
+        ));
+    }
+
     if let Ok(p) = std::env::var("FIGURESMITH_PYTHON") {
         let path = PathBuf::from(p.trim());
         if path.as_os_str().is_empty() {
@@ -376,20 +400,23 @@ fn resolve_python(repo_root: &Path) -> Result<PathBuf, String> {
     }
 
     let candidates = [
-        repo_root
+        runtime_root
             .join("apps")
             .join("backend")
             .join(".venv")
             .join("Scripts")
             .join("python.exe"),
-        repo_root
+        runtime_root
             .join("apps")
             .join("backend")
             .join(".venv")
             .join("bin")
             .join("python"),
-        repo_root.join(".venv").join("Scripts").join("python.exe"),
-        repo_root.join(".venv").join("bin").join("python"),
+        runtime_root
+            .join(".venv")
+            .join("Scripts")
+            .join("python.exe"),
+        runtime_root.join(".venv").join("bin").join("python"),
     ];
     for c in candidates {
         if c.is_file() {
@@ -522,7 +549,181 @@ fn force_kill_tree(pid: u32) {
     }
 }
 
-/// Resolve monorepo root from env, cargo manifest, or cwd.
+fn env_flag(name: &str) -> bool {
+    std::env::var(name)
+        .ok()
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
+fn validate_runtime_manifest(runtime_root: &Path) -> Result<(), String> {
+    let manifest_path = runtime_root.join("runtime-manifest.json");
+    let text = std::fs::read_to_string(&manifest_path).map_err(|e| {
+        format!(
+            "runtime manifest unreadable: {} ({e})",
+            manifest_path.display()
+        )
+    })?;
+    let value: serde_json::Value = serde_json::from_str(&text).map_err(|e| {
+        format!(
+            "runtime manifest invalid JSON: {} ({e})",
+            manifest_path.display()
+        )
+    })?;
+    if value.get("product").and_then(|v| v.as_str()) != Some("FigureSmith") {
+        return Err("runtime manifest product is not FigureSmith".into());
+    }
+    if value.get("runtime_complete").and_then(|v| v.as_bool()) != Some(true) {
+        return Err("runtime manifest is not a complete packaged runtime".into());
+    }
+    if value.get("contains_weights").and_then(|v| v.as_bool()) != Some(false) {
+        return Err("runtime manifest does not prove contains_weights=false".into());
+    }
+    if value.get("contains_cache").and_then(|v| v.as_bool()) != Some(false) {
+        return Err("runtime manifest does not prove contains_cache=false".into());
+    }
+    let files = value
+        .get("files")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "runtime manifest file inventory is missing".to_string())?;
+    let listed = |relative: &str| {
+        files
+            .iter()
+            .any(|entry| entry.get("path").and_then(|path| path.as_str()) == Some(relative))
+    };
+    for relative in [
+        "app/backend/main.py",
+        "app/vendor/autofigure_edit/server.py",
+    ] {
+        if !listed(relative) {
+            return Err(format!(
+                "runtime manifest inventory is missing required file: {relative}"
+            ));
+        }
+    }
+    if !listed("python.exe") && !listed("python/python.exe") {
+        return Err("runtime manifest inventory is missing packaged Python".into());
+    }
+    let python_present = runtime_root.join("python.exe").is_file()
+        || runtime_root.join("python").join("python.exe").is_file();
+    if !python_present {
+        return Err(format!(
+            "runtime manifest entry missing packaged Python under {}",
+            runtime_root.display()
+        ));
+    }
+    for relative in [
+        Path::new("app/backend/main.py"),
+        Path::new("app/vendor/autofigure_edit/server.py"),
+    ] {
+        if !runtime_root.join(relative).is_file() {
+            return Err(format!(
+                "runtime manifest entry missing required file: {}",
+                runtime_root.join(relative).display()
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn resolve_runtime_layout(base: &Path) -> Result<RuntimeLayout, String> {
+    let base = base
+        .canonicalize()
+        .map_err(|e| format!("runtime root is not accessible: {} ({e})", base.display()))?;
+    let runtime_root = if base.join("runtime-manifest.json").is_file() {
+        base.clone()
+    } else if base.join("runtime").join("runtime-manifest.json").is_file() {
+        base.join("runtime")
+    } else {
+        base.clone()
+    };
+    let release = runtime_root.join("runtime-manifest.json").is_file()
+        || env_flag("FIGURESMITH_RELEASE_MODE");
+    let (backend_dir, vendor_dir) = if runtime_root.join("app").join("backend").is_dir() {
+        (
+            runtime_root.join("app").join("backend"),
+            runtime_root
+                .join("app")
+                .join("vendor")
+                .join("autofigure_edit"),
+        )
+    } else {
+        (
+            runtime_root.join("apps").join("backend"),
+            runtime_root.join("vendor").join("autofigure_edit"),
+        )
+    };
+    let main_py = backend_dir.join("main.py");
+    if release {
+        validate_runtime_manifest(&runtime_root)?;
+    }
+    if !main_py.is_file() {
+        return Err(format!("backend entry not found: {}", main_py.display()));
+    }
+    if !vendor_dir.join("server.py").is_file() {
+        return Err(format!("vendor entry not found: {}", vendor_dir.display()));
+    }
+    let python = resolve_python(&runtime_root, release)?;
+    Ok(RuntimeLayout {
+        root: runtime_root,
+        backend_dir,
+        vendor_dir,
+        main_py,
+        python,
+        release,
+    })
+}
+
+/// Resolve a packaged runtime root or, when not in release mode, the source tree.
+pub fn resolve_runtime_root(resource_dir: Option<PathBuf>) -> Result<PathBuf, String> {
+    if let Ok(raw) = std::env::var("FIGURESMITH_RUNTIME_DIR") {
+        if !raw.trim().is_empty() {
+            let path = PathBuf::from(raw.trim());
+            let layout = resolve_runtime_layout(&path)?;
+            if !layout.release {
+                return Err(format!(
+                    "FIGURESMITH_RUNTIME_DIR is not a packaged runtime: {}",
+                    path.display()
+                ));
+            }
+            return Ok(layout.root);
+        }
+    }
+
+    if env_flag("FIGURESMITH_RELEASE_MODE") {
+        let resource = resource_dir.ok_or_else(|| {
+            "release runtime resource directory is unavailable; refusing source fallback"
+                .to_string()
+        })?;
+        let layout = resolve_runtime_layout(&resource)?;
+        if !layout.release {
+            return Err(format!(
+                "release runtime manifest missing under {}",
+                resource.display()
+            ));
+        }
+        return Ok(layout.root);
+    }
+
+    if let Some(resource) = resource_dir {
+        if resource
+            .join("runtime")
+            .join("runtime-manifest.json")
+            .is_file()
+            || resource.join("runtime-manifest.json").is_file()
+        {
+            return Ok(resolve_runtime_layout(&resource)?.root);
+        }
+    }
+    resolve_repo_root()
+}
+
+/// Resolve monorepo root from env, cargo manifest, or cwd in development mode.
 pub fn resolve_repo_root() -> Result<PathBuf, String> {
     if let Ok(p) = std::env::var("FIGURESMITH_REPO_ROOT") {
         let path = PathBuf::from(p);
@@ -569,6 +770,50 @@ pub fn resolve_repo_root() -> Result<PathBuf, String> {
 mod tests {
     use super::*;
 
+    fn temp_runtime_root(label: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "figuresmith-{label}-{}-{}",
+            std::process::id(),
+            generate_token()
+        ));
+        std::fs::create_dir_all(&root).expect("runtime fixture root");
+        root
+    }
+
+    fn write_runtime_fixture(root: &Path, product: &str, complete: bool) {
+        let backend = root.join("app").join("backend");
+        let vendor = root.join("app").join("vendor").join("autofigure_edit");
+        let python = root.join("python");
+        std::fs::create_dir_all(&backend).expect("backend fixture");
+        std::fs::create_dir_all(&vendor).expect("vendor fixture");
+        std::fs::create_dir_all(&python).expect("python fixture");
+        std::fs::write(backend.join("main.py"), b"# fixture\n").expect("main fixture");
+        std::fs::write(vendor.join("server.py"), b"# fixture\n").expect("vendor fixture");
+        std::fs::write(python.join("python.exe"), b"python fixture\n").expect("python fixture");
+        let manifest = format!(
+            r#"{{
+  "schema": 1,
+  "product": "{product}",
+  "version": "0.6.0",
+  "platform": "Windows",
+  "arch": "x86_64",
+  "runtime_complete": {complete},
+  "contains_weights": false,
+  "contains_cache": false,
+  "file_count": 3,
+  "files": [
+    {{"path": "app/backend/main.py", "size_bytes": 10, "sha256": "{}"}},
+    {{"path": "app/vendor/autofigure_edit/server.py", "size_bytes": 10, "sha256": "{}"}},
+    {{"path": "python/python.exe", "size_bytes": 15, "sha256": "{}"}}
+  ]
+}}"#,
+            "0".repeat(64),
+            "0".repeat(64),
+            "0".repeat(64)
+        );
+        std::fs::write(root.join("runtime-manifest.json"), manifest).expect("manifest fixture");
+    }
+
     #[test]
     fn free_port_is_nonzero() {
         let p = find_free_port().expect("port");
@@ -590,6 +835,42 @@ mod tests {
         let t = generate_token();
         assert_eq!(t.len(), 64);
         assert!(t.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn release_python_never_falls_back_to_path() {
+        let root = temp_runtime_root("python");
+        let result = resolve_python(&root, true);
+        assert!(result
+            .expect_err("release must reject missing packaged Python")
+            .contains("packaged Python runtime missing"));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn release_layout_accepts_nested_python_only_with_complete_manifest() {
+        let root = temp_runtime_root("layout");
+        write_runtime_fixture(&root, "FigureSmith", true);
+        let layout = resolve_runtime_layout(&root).expect("valid release fixture");
+        assert!(layout.release);
+        assert_eq!(layout.root, root.canonicalize().expect("canonical root"));
+        assert!(layout.python.ends_with(Path::new("python/python.exe")));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn release_layout_rejects_wrong_identity_or_incomplete_manifest() {
+        let wrong_product = temp_runtime_root("identity");
+        write_runtime_fixture(&wrong_product, "OtherProduct", true);
+        let error = resolve_runtime_layout(&wrong_product).expect_err("wrong product");
+        assert!(error.contains("product is not FigureSmith"));
+        let _ = std::fs::remove_dir_all(wrong_product);
+
+        let incomplete = temp_runtime_root("complete");
+        write_runtime_fixture(&incomplete, "FigureSmith", false);
+        let error = resolve_runtime_layout(&incomplete).expect_err("incomplete runtime");
+        assert!(error.contains("not a complete packaged runtime"));
+        let _ = std::fs::remove_dir_all(incomplete);
     }
 
     #[test]

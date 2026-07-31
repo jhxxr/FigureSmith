@@ -11,21 +11,28 @@ import sys
 from pathlib import Path
 
 
-def _find_repo_root() -> Path:
-    """Locate the monorepo root without assuming a fixed install layout.
-
-    Preferred markers: ``vendor/autofigure_edit`` + ``apps/backend``.
-    Falls back to the source-tree relative path used in Phase 1 development
-    (``.../apps/backend/figuresmith/pipeline/this_file`` → 4 parents up).
-    """
-    here = Path(__file__).resolve()
+def _find_repo_root_from(here: Path) -> Path:
+    """Locate source or packaged app root from a module path."""
+    here = Path(here).resolve()
     for parent in here.parents:
         if (parent / "vendor" / "autofigure_edit").is_dir() and (
-            parent / "apps" / "backend"
-        ).is_dir():
+            (parent / "apps" / "backend").is_dir() or (parent / "backend").is_dir()
+        ):
             return parent
-    # Source layout fallback: pipeline -> figuresmith -> backend -> apps -> root
-    return here.parents[4]
+    # Source layout fallback: pipeline -> figuresmith -> backend -> apps -> root.
+    # Keep this defensive for import-time diagnostics in partially staged trees.
+    return here.parents[min(4, len(here.parents) - 1)]
+
+
+def _find_repo_root() -> Path:
+    """Locate the monorepo root or the ``app`` root in a runtime pack.
+
+    A complete runtime is laid out as ``app/backend`` and
+    ``app/vendor/autofigure_edit``. Returning ``app`` for that layout keeps
+    the rest of the vendor bridge path logic identical in source and release
+    processes.
+    """
+    return _find_repo_root_from(Path(__file__))
 
 
 _REPO_ROOT = _find_repo_root()

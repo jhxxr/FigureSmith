@@ -164,6 +164,31 @@ $manifest = @{
 $manifestPath = Join-Path $packDir "MANIFEST.json"
 [System.IO.File]::WriteAllText($manifestPath, $manifest, [System.Text.UTF8Encoding]::new($false))
 
+# Generate the structured inventory consumed by the desktop resolver. This
+# dependency-install pack is intentionally marked incomplete because it does
+# not contain the isolated CPython runtime; the complete assembly pipeline
+# uses the same helper with runtime_complete=true after Python is staged.
+$pythonCommand = Get-Command python -ErrorAction SilentlyContinue
+if ($null -eq $pythonCommand) {
+    throw "Python is required to generate runtime-manifest.json"
+}
+$previousPyPath = $env:PYTHONPATH
+try {
+    $env:PYTHONPATH = Join-Path $RepoRoot "apps\backend"
+    $manifestCode = "import sys; from pathlib import Path; from figuresmith.runtime.manifest import write_runtime_manifest; write_runtime_manifest(Path(sys.argv[1]), version=sys.argv[2], platform='Windows', arch='x86_64', runtime_complete=False)"
+    & $pythonCommand.Source -c $manifestCode $packDir $Version
+    if ($LASTEXITCODE -ne 0) {
+        throw "runtime-manifest.json generation failed"
+    }
+} finally {
+    if ($null -eq $previousPyPath) {
+        Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
+    } else {
+        $env:PYTHONPATH = $previousPyPath
+    }
+}
+Write-Host "Structured manifest: $(Join-Path $packDir 'runtime-manifest.json')" -ForegroundColor DarkGreen
+
 @'
 # FigureSmith Runtime Pack (Windows / NVIDIA)
 

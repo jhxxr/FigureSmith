@@ -144,6 +144,22 @@ cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
 - [ ] Do not mark the parent release hardening task complete; this child closes
       only the SVG/session boundary.
 
+## Evidence (2026-08-01)
+
+- `247` Python tests pass; desktop TypeScript/Vite build, Rust fmt/clippy/test,
+  and context validation pass.
+- `npm --prefix apps/desktop run test:bridge` passes 3 behavior tests against
+  the Rust document-start template: exact-origin Bearer, Request preservation,
+  and scoped `fs_ticket` EventSource behavior.
+- A local browser cold load plus reload of `/welcome.html` reached only
+  `127.0.0.1` resources and `/api/system/status` (200); no external or
+  cross-port request was observed.
+- The external SAM3 checkpoint was read-only validated through the registry:
+  `G:\0JHX-code\Project\FigureSmith-model\sam3.pt`, `3,450,062,241` bytes.
+- Remaining release gate: Tauri/WebView production cold-start trace with auth
+  enabled, and socket-level strict-offline canaries for omitted defaults,
+  redirects, and provider-returned assets.
+
 ## Risky Surfaces
 
 - `vendor/autofigure_edit/autofigure2.py`: generation and rasterization order.

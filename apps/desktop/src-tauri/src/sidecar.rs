@@ -103,9 +103,14 @@ impl SidecarState {
         let main_py = layout.main_py.clone();
         let backend_dir = layout.backend_dir.clone();
         let vendor_dir = layout.vendor_dir.clone();
+        let vendor_parent = vendor_dir
+            .parent()
+            .ok_or_else(|| "vendor runtime path has no parent".to_string())?;
         let pythonpath = format!(
-            "{}{}{}",
+            "{}{}{}{}{}",
             backend_dir.display(),
+            path_sep(),
+            vendor_parent.display(),
             path_sep(),
             vendor_dir.display()
         );

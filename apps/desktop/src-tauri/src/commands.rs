@@ -194,20 +194,23 @@ pub async fn open_models_directory(
 
 /// Build the document-start request bridge for the authenticated sidecar page.
 ///
-/// The token is captured by the wrapper closures and is never placed on a
-/// window-owned session object or in storage. Only exact-origin EventSource
-/// requests receive the scoped query credential required by browser SSE; the
+/// The token and short-lived SSE ticket are captured by wrapper closures and
+/// are never placed on a window-owned session object or in storage. Only
+/// exact-origin EventSource requests receive the scoped query credential; the
 /// `/api` checks run before any vendor script can issue a fetch.
 pub fn build_initialization_script(session: &crate::sidecar::SessionInfo) -> String {
     // JSON serialization prevents token/api values from becoming JavaScript.
     // The session token is generated as hex today, but this remains defensive.
     let token_js = serde_json::to_string(&session.token).unwrap_or_else(|_| "\"\"".into());
+    let sse_ticket_js =
+        serde_json::to_string(&session.sse_ticket).unwrap_or_else(|_| "\"\"".into());
     let api_base_js = serde_json::to_string(&session.api_base).unwrap_or_else(|_| "\"\"".into());
     format!(
         r#"(function(){{
   "use strict";
   var apiBase = {api_base_js};
   var token = {token_js};
+  var sseTicket = {sse_ticket_js};
   var allowedOrigin = null;
 
   function normalize(value) {{
@@ -313,8 +316,8 @@ pub fn build_initialization_script(session: &crate::sidecar::SessionInfo) -> Str
         var url = normalize(input);
         if (url && url.origin === allowedOrigin &&
             (url.pathname === "/api/events" || url.pathname.indexOf("/api/events/") === 0) &&
-            !url.searchParams.has("fs_token") && !url.searchParams.has("token")) {{
-          url.searchParams.set("fs_token", token);
+            !url.searchParams.has("fs_ticket")) {{
+          url.searchParams.set("fs_ticket", sseTicket);
           return new OriginalEventSource(url.toString(), config);
         }}
         return new OriginalEventSource(input, config);
@@ -354,6 +357,7 @@ mod tests {
             port: 45678,
             api_base: "http://127.0.0.1:45678".into(),
             token: "token-for-test-only".into(),
+            sse_ticket: "ticket-for-test-only".into(),
         });
         assert!(script.contains("window.top !== window"));
         assert!(script.contains("window.location.origin"));
@@ -361,6 +365,8 @@ mod tests {
         assert!(script.contains("AUTH_BOOTSTRAP_FAILED"));
         assert!(script.contains("Promise.reject(bootstrapError())"));
         assert!(script.contains("token-for-test-only"));
+        assert!(script.contains("fs_ticket"));
+        assert!(!script.contains("fs_token"));
         assert!(!script.contains("window.__FIGURESMITH__ ="));
         assert!(script.contains("__FIGURESMITH_DESKTOP_READY__"));
     }

@@ -274,7 +274,7 @@ _STYLE_PROPERTIES = frozenset(
 )
 
 _LOCAL_FRAGMENT = re.compile(r"^#[A-Za-z_][A-Za-z0-9_.:-]*$")
-_LOCAL_URL = re.compile(r"^url\(\s*#[A-Za-z_][A-Za-z0-9_.:-]*\s*\)$", re.IGNORECASE)
+_LOCAL_URL = re.compile(r"^url\s*\(\s*#[A-Za-z_][A-Za-z0-9_.:-]*\s*\)$", re.IGNORECASE)
 _DATA_URI = re.compile(r"^data:image/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$", re.IGNORECASE)
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
@@ -284,9 +284,50 @@ def _reject(category: str) -> None:
 
 
 def _check_style(value: str) -> None:
-    if "@" in value or "url(" in value.lower() or "expression" in value.lower():
+    if _CONTROL.search(value) or "/*" in value or "*/" in value:
         _reject("style_content")
-    for declaration in value.split(";"):
+    if "@" in value or "expression" in value.lower():
+        _reject("style_content")
+    declarations: list[str] = []
+    current: list[str] = []
+    quote: str | None = None
+    escaped = False
+    paren_depth = 0
+    for char in value:
+        if escaped:
+            _reject("style_escape")
+        if char == "\\":
+            escaped = True
+            current.append(char)
+            continue
+        if quote:
+            current.append(char)
+            if char == quote:
+                quote = None
+            continue
+        if char in {"'", '"'}:
+            quote = char
+            current.append(char)
+        elif char == "(":
+            paren_depth += 1
+            current.append(char)
+        elif char == ")":
+            paren_depth -= 1
+            if paren_depth < 0:
+                _reject("style_syntax")
+            current.append(char)
+        elif char == ";" and paren_depth == 0:
+            declarations.append("".join(current))
+            current = []
+        elif char in "{}":
+            _reject("style_syntax")
+        else:
+            current.append(char)
+    if escaped or quote or paren_depth:
+        _reject("style_syntax")
+    declarations.append("".join(current))
+
+    for declaration in declarations:
         declaration = declaration.strip()
         if not declaration:
             continue
@@ -295,8 +336,13 @@ def _check_style(value: str) -> None:
         name, css_value = declaration.split(":", 1)
         if name.strip().lower() not in _STYLE_PROPERTIES or not css_value.strip():
             _reject("style_property")
-        if _CONTROL.search(css_value):
-            _reject("control_character")
+        for url_match in re.finditer(r"url\s*\([^)]*\)", css_value, re.IGNORECASE):
+            if not _LOCAL_URL.fullmatch(url_match.group(0).strip()):
+                _reject("style_content")
+        if re.search(r"url\s*\(", css_value, re.IGNORECASE) and not re.search(
+            r"url\s*\([^)]*\)", css_value, re.IGNORECASE
+        ):
+            _reject("style_content")
 
 
 def _check_data_uri(value: str, limits: SvgLimits) -> None:
@@ -334,7 +380,8 @@ def _attribute_name(key: str) -> tuple[str | None, str]:
 
 
 def _walk_and_validate(root: etree._Element, limits: SvgLimits) -> None:
-    if etree.QName(root).localname != "svg":
+    root_qname = etree.QName(root)
+    if root_qname.localname != "svg" or root_qname.namespace != SVG_NS:
         _reject("root_element")
     count = 0
     for node in root.iter():
@@ -349,7 +396,7 @@ def _walk_and_validate(root: etree._Element, limits: SvgLimits) -> None:
         if depth > limits.max_depth:
             _reject("element_depth")
         qname = etree.QName(node)
-        if qname.localname not in _ALLOWED_ELEMENTS or qname.namespace not in {None, SVG_NS}:
+        if qname.localname not in _ALLOWED_ELEMENTS or qname.namespace != SVG_NS:
             _reject("element_allowlist")
         if len(node.attrib) > limits.max_attributes:
             _reject("attribute_count")

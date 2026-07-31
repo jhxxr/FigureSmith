@@ -8,6 +8,7 @@ from figuresmith.models.errors import OfflineEndpointForbidden
 from figuresmith.security.offline import (
     apply_strict_offline_env,
     is_loopback_host,
+    validate_effective_offline_policy,
     validate_offline_endpoint,
 )
 
@@ -84,6 +85,28 @@ def test_validate_offline_endpoint_denies(url: str) -> None:
 def test_validate_offline_endpoint_empty() -> None:
     with pytest.raises(OfflineEndpointForbidden):
         validate_offline_endpoint("   ")
+
+
+@pytest.mark.parametrize("url", ["file:///tmp/model", "ftp://127.0.0.1/model", "http://user:pass@127.0.0.1/v1"])
+def test_validate_offline_endpoint_rejects_non_http_or_credentials(url: str) -> None:
+    with pytest.raises(OfflineEndpointForbidden):
+        validate_offline_endpoint(url)
+
+
+def test_effective_offline_policy_runs_after_defaults() -> None:
+    validate_effective_offline_policy(
+        provider="custom",
+        base_url="http://127.0.0.1:11434/v1",
+        image_provider="custom",
+        image_base_url="http://127.0.0.1:11434/v1",
+    )
+    with pytest.raises(OfflineEndpointForbidden):
+        validate_effective_offline_policy(
+            provider="bianxie",
+            base_url="https://api.bianxie.ai/v1",
+            image_provider="bianxie",
+            image_base_url="https://api.bianxie.ai/v1",
+        )
 
 
 def test_apply_strict_offline_env_sets_flags(monkeypatch: pytest.MonkeyPatch) -> None:

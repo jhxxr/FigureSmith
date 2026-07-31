@@ -574,7 +574,7 @@ def _extract_openai_image_response(response: Any) -> Optional[Image.Image]:
 
         image_url = getattr(item, "url", None)
         if isinstance(image_url, str) and image_url.strip():
-            resp = requests.get(image_url, timeout=120)
+            resp = _figuresmith_get_asset(image_url, timeout=120)
             resp.raise_for_status()
             image = Image.open(io.BytesIO(resp.content))
             image.load()
@@ -938,7 +938,7 @@ def _call_openrouter_image_generation(
 
     def _load_remote_image(image_url: str) -> Optional[Image.Image]:
         try:
-            resp = requests.get(image_url, timeout=120)
+            resp = _figuresmith_get_asset(image_url, timeout=120)
             if resp.status_code != 200 or not resp.content:
                 return None
             image = Image.open(io.BytesIO(resp.content))
@@ -1920,6 +1920,46 @@ def _figuresmith_reject_remote_sam(backend: str, *, strict_offline: bool) -> Non
             "Remote SAM backends (fal/roboflow/api) are disabled in strict offline mode "
             f"(sam_backend={backend!r})"
         )
+
+
+def _figuresmith_validate_effective_offline(
+    *,
+    provider: str,
+    base_url: str,
+    image_provider: str,
+    image_base_url: str,
+    strict_offline: bool,
+) -> None:
+    """Apply the offline network gate after provider defaults are resolved."""
+    if not strict_offline:
+        return
+    from figuresmith.security.offline import validate_effective_offline_policy
+
+    validate_effective_offline_policy(
+        provider=provider,
+        base_url=base_url,
+        image_provider=image_provider,
+        image_base_url=image_base_url,
+    )
+
+
+def _figuresmith_validate_offline_asset(url: str) -> None:
+    """Reject provider-returned remote assets before any image request."""
+    if not _figuresmith_strict_offline(None):
+        return
+    from figuresmith.security.offline import validate_offline_asset_url
+
+    validate_offline_asset_url(url)
+
+
+def _figuresmith_get_asset(url: str, *, timeout: float):
+    """Fetch an image without following an unchecked remote redirect."""
+    _figuresmith_validate_offline_asset(url)
+    strict = _figuresmith_strict_offline(None)
+    response = requests.get(url, timeout=timeout, allow_redirects=not strict)
+    if strict and 300 <= response.status_code < 400:
+        raise RuntimeError("[OFFLINE_REDIRECT_FORBIDDEN] remote asset redirect rejected")
+    return response
 
 
 def _figuresmith_resolve_sam_checkpoint(sam_checkpoint_path: Optional[str]) -> Optional[str]:
@@ -3078,7 +3118,10 @@ def replace_icons_in_svg(
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(output_path, 'w', encoding='utf-8') as f:
-        f.write(svg_content)
+        from figuresmith.security.svg import sanitize_svg
+
+        safe_svg = sanitize_svg(svg_content).data.decode("utf-8")
+        f.write(safe_svg)
 
     print(f"最终 SVG 已保存: {output_path}")
     return str(output_path)
@@ -3459,6 +3502,14 @@ def method_to_svg(
         image_base_url = base_url
     if image_base_url is None:
         image_base_url = image_config["base_url"]
+    strict_offline_effective = _figuresmith_strict_offline(strict_offline)
+    _figuresmith_validate_effective_offline(
+        provider=provider,
+        base_url=base_url,
+        image_provider=image_provider,
+        image_base_url=image_base_url,
+        strict_offline=strict_offline_effective,
+    )
     if input_figure_path is None and image_provider == "custom" and not image_base_url:
         raise ValueError(
             "Custom image provider requires --image_base_url, --base_url, or "
@@ -3762,11 +3813,14 @@ def create_embedded_figure_svg(
         f'href="data:image/png;base64,{figure_b64}" preserveAspectRatio="none"/>\n'
         f"</svg>\n"
     )
+    from figuresmith.security.svg import sanitize_svg
+
+    safe_svg = sanitize_svg(svg_code).data.decode("utf-8")
 
     output_path_obj = Path(output_path)
     output_path_obj.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path_obj, 'w', encoding='utf-8') as f:
-        f.write(svg_code)
+        f.write(safe_svg)
 
     print(f"内嵌 figure.png 的保底 SVG 已保存: {output_path_obj}")
     return str(output_path_obj)

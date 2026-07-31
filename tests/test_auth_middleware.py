@@ -54,18 +54,21 @@ def test_query_token_helpers() -> None:
     assert allows_query_token("/api/events/job-1") is True
     assert allows_query_token("/api/events") is True
     assert allows_query_token("/api/models") is False
-    assert extract_query_token("fs_token=abc123") == "abc123"
-    assert extract_query_token("token=xyz&other=1") == "xyz"
+    assert extract_query_token("fs_ticket=abc123") == "abc123"
+    assert extract_query_token("fs_token=legacy&token=long-lived") is None
     assert extract_query_token("foo=bar") is None
 
 
 def test_redact_secrets(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("FIGURESMITH_SESSION_TOKEN", "super-secret-token-value")
+    monkeypatch.setenv("FIGURESMITH_SSE_TICKET", "short-lived-ticket-value")
     monkeypatch.setenv("FIGURESMITH_DISABLE_AUTH", "0")
-    text = "header Bearer super-secret-token-value trailing"
+    text = "header Bearer super-secret-token-value fs_ticket=short-lived-ticket-value"
     redacted = redact_secrets(text)
     assert "super-secret-token-value" not in redacted
+    assert "short-lived-ticket-value" not in redacted
     assert "[REDACTED_SESSION_TOKEN]" in redacted
+    assert "[REDACTED_SSE_TICKET]" in redacted
 
 
 def test_api_requires_token_when_enabled(auth_token_env: str, tmp_path: Path) -> None:
@@ -117,8 +120,8 @@ def test_no_token_means_auth_off(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     assert r.status_code == 200
 
 
-def test_events_path_accepts_query_token(auth_token_env: str) -> None:
-    """EventSource cannot send Authorization; scoped query token is allowed."""
+def test_events_path_accepts_only_short_lived_sse_ticket(auth_token_env: str) -> None:
+    """EventSource cannot send Authorization; the session token never goes in a URL."""
     from fastapi import FastAPI
 
     from figuresmith.security.auth import install_auth_middleware
@@ -139,10 +142,24 @@ def test_events_path_accepts_query_token(auth_token_env: str) -> None:
     denied = client.get("/api/events/j1")
     assert denied.status_code == 401
 
-    ok = client.get(f"/api/events/j1?fs_token={auth_token_env}")
+    ok = client.get("/api/events/j1?fs_ticket=test-sse-ticket-figuresmith")
     assert ok.status_code == 200
     assert ok.json()["job_id"] == "j1"
+
+    long_lived = client.get(f"/api/events/j1?fs_token={auth_token_env}")
+    assert long_lived.status_code == 401
+
+    expired = client.get("/api/events/j1?fs_ticket=wrong-ticket")
+    assert expired.status_code == 401
 
     # Query token must not open non-events API routes.
     still_denied = client.get(f"/api/models?fs_token={auth_token_env}")
     assert still_denied.status_code == 401
+
+
+def test_sse_ticket_expiry(monkeypatch: pytest.MonkeyPatch, auth_token_env: str) -> None:
+    from figuresmith.security.auth import sse_ticket_is_valid
+
+    monkeypatch.setenv("FIGURESMITH_SSE_TICKET_EXPIRES_AT", "100")
+    assert sse_ticket_is_valid("test-sse-ticket-figuresmith", now=99.9)
+    assert not sse_ticket_is_valid("test-sse-ticket-figuresmith", now=100)

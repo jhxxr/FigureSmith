@@ -2093,7 +2093,7 @@
     const logBody = $("logBody");
     const iframe = $("svgEditorFrame");
     const fallback = $("svgFallback");
-    const fallbackObject = $("fallbackObject");
+    const fallbackImage = $("fallbackImage");
     let currentStep = 0;
     let isFinished = false;
     let statusState = "waiting";
@@ -2350,7 +2350,7 @@
           iframe.src = `${svgEditPath}?url=${encodeURIComponent(url)}`;
         }
       } else {
-        fallbackObject.data = url;
+        fallbackImage.src = url;
       }
     }
 
@@ -2358,7 +2358,7 @@
       fallbackMode = "history_image";
       iframe.style.display = "none";
       fallback.classList.add("active");
-      fallbackObject.data = artifact.url;
+      fallbackImage.src = artifact.url;
       setCanvasLocale();
     }
 

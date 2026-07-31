@@ -3,7 +3,7 @@
   "name": "safe-beta-security-boundary",
   "title": "Safe beta security boundary",
   "description": "Treat generated SVG as untrusted and prevent desktop session credential leakage across origins.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

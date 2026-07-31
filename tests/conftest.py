@@ -16,9 +16,14 @@ os.environ.setdefault("FIGURESMITH_DISABLE_AUTH", "1")
 
 @pytest.fixture
 def auth_token_env(monkeypatch: pytest.MonkeyPatch):
-    """Enable Bearer auth with a known test token (clears DISABLE_AUTH)."""
+    """Enable Bearer auth and a valid scoped SSE ticket for tests."""
+    import time
+
     token = "test-session-token-figuresmith-phase4"
+    ticket = "test-sse-ticket-figuresmith"
     monkeypatch.delenv("FIGURESMITH_DISABLE_AUTH", raising=False)
     monkeypatch.setenv("FIGURESMITH_SESSION_TOKEN", token)
+    monkeypatch.setenv("FIGURESMITH_SSE_TICKET", ticket)
+    monkeypatch.setenv("FIGURESMITH_SSE_TICKET_EXPIRES_AT", str(time.time() + 300))
     monkeypatch.setenv("FIGURESMITH_DISABLE_AUTH", "0")
     return token

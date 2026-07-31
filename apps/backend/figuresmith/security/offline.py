@@ -182,6 +182,12 @@ def validate_offline_endpoint(base_url: str, *, resolve_dns: bool = False) -> No
     # Allow bare host:port by giving urlparse a scheme when missing.
     to_parse = raw if "://" in raw else f"http://{raw}"
     parsed = urlparse(to_parse)
+    if parsed.scheme not in {"http", "https"}:
+        raise OfflineEndpointForbidden(
+            detail=f"scheme={parsed.scheme!r} is not an HTTP(S) loopback endpoint"
+        )
+    if parsed.username or parsed.password:
+        raise OfflineEndpointForbidden(detail="endpoint credentials are not allowed")
     host = parsed.hostname
     if not host:
         raise OfflineEndpointForbidden(
@@ -195,3 +201,38 @@ def validate_offline_endpoint(base_url: str, *, resolve_dns: bool = False) -> No
                 "(127.0.0.1 / ::1 / localhost only)"
             )
         )
+
+
+def validate_effective_offline_policy(
+    *,
+    provider: str,
+    base_url: str,
+    image_provider: str,
+    image_base_url: str,
+) -> None:
+    """Reject effective provider defaults before an outbound client is built.
+
+    Strict mode permits only an explicitly selected OpenAI-compatible ``custom``
+    provider pointed at loopback. This is intentionally evaluated after the
+    vendor has resolved aliases and all default URLs.
+    """
+    from figuresmith.models.errors import OfflineEndpointForbidden
+
+    if provider != "custom":
+        raise OfflineEndpointForbidden(
+            detail=f"provider={provider!r} is a public/cloud provider"
+        )
+    if image_provider != "custom":
+        raise OfflineEndpointForbidden(
+            detail=f"image_provider={image_provider!r} is a public/cloud provider"
+        )
+    validate_offline_endpoint(base_url)
+    validate_offline_endpoint(image_base_url)
+
+
+def validate_offline_asset_url(url: str) -> None:
+    """Allow local data images or loopback HTTP assets, rejecting remote URLs."""
+    raw = str(url or "").strip()
+    if raw.lower().startswith("data:image/"):
+        return
+    validate_offline_endpoint(raw)

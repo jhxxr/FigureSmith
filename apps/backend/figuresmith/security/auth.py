@@ -5,8 +5,9 @@ Policy (Phase 4):
   truthy, all ``/api/*`` routes require ``Authorization: Bearer <token>``.
 - ``/healthz`` stays public (process-alive probe).
 - Static UI and non-API paths stay public so the WebView can load vendor pages.
-- ``/api/events/*`` may also accept ``fs_token`` / ``token`` query params because
-  browser ``EventSource`` cannot set Authorization headers (desktop bridge only).
+- ``/api/events/*`` may also accept a short-lived ``fs_ticket`` query credential
+  because browser ``EventSource`` cannot set Authorization headers (desktop
+  bridge only). The long-lived session token is never accepted in a query.
 - Token lives only in process env / memory — never write it to disk or logs.
 
 Test / browser-dev bypass: ``FIGURESMITH_DISABLE_AUTH=1``.
@@ -16,6 +17,7 @@ from __future__ import annotations
 
 import hmac
 import os
+import time
 from typing import Optional
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -25,6 +27,8 @@ from starlette.responses import JSONResponse, Response
 from figuresmith.security.offline import env_flag_true
 
 SESSION_TOKEN_ENV = "FIGURESMITH_SESSION_TOKEN"
+SSE_TICKET_ENV = "FIGURESMITH_SSE_TICKET"
+SSE_TICKET_EXPIRES_ENV = "FIGURESMITH_SSE_TICKET_EXPIRES_AT"
 DISABLE_AUTH_ENV = "FIGURESMITH_DISABLE_AUTH"
 
 # Paths that never require a Bearer token even when auth is enabled.
@@ -44,6 +48,29 @@ def get_session_token() -> Optional[str]:
     return token or None
 
 
+def get_sse_ticket() -> Optional[str]:
+    """Return the short-lived EventSource credential, or ``None``."""
+    raw = os.environ.get(SSE_TICKET_ENV)
+    if raw is None:
+        return None
+    ticket = raw.strip()
+    return ticket or None
+
+
+def sse_ticket_is_valid(provided: Optional[str], *, now: Optional[float] = None) -> bool:
+    """Validate a scoped SSE ticket and its absolute Unix expiry timestamp."""
+    expected = get_sse_ticket()
+    if expected is None or not tokens_match(expected, provided):
+        return False
+    raw_expiry = os.environ.get(SSE_TICKET_EXPIRES_ENV)
+    try:
+        expires_at = float(raw_expiry) if raw_expiry else 0.0
+    except (TypeError, ValueError):
+        return False
+    current = time.time() if now is None else float(now)
+    return expires_at > current
+
+
 def is_auth_disabled() -> bool:
     """Return True when tests/legacy browser dev bypass auth."""
     return env_flag_true(DISABLE_AUTH_ENV, default=False)
@@ -57,15 +84,17 @@ def is_auth_enabled() -> bool:
 
 
 def redact_secrets(text: str) -> str:
-    """Replace any live session token occurrences in ``text`` before logging."""
+    """Replace live session and SSE ticket values before logging."""
     if not text:
         return text
+    out = text
     token = get_session_token()
-    if not token:
-        return text
-    if token in text:
-        return text.replace(token, "[REDACTED_SESSION_TOKEN]")
-    return text
+    if token:
+        out = out.replace(token, "[REDACTED_SESSION_TOKEN]")
+    ticket = get_sse_ticket()
+    if ticket:
+        out = out.replace(ticket, "[REDACTED_SSE_TICKET]")
+    return out
 
 
 def extract_bearer_token(authorization: Optional[str]) -> Optional[str]:
@@ -82,10 +111,11 @@ def extract_bearer_token(authorization: Optional[str]) -> Optional[str]:
 
 
 def extract_query_token(query_string: str) -> Optional[str]:
-    """Extract session token from query for EventSource-compatible paths only.
+    """Extract the scoped SSE ticket from a query string.
 
-    Browser ``EventSource`` cannot set ``Authorization`` headers. The desktop
-    bridge may append ``fs_token`` / ``token`` on ``/api/events/*`` only.
+    The compatibility function name is retained for callers, but only the
+    short-lived ``fs_ticket`` parameter is accepted. Long-lived session tokens
+    in ``fs_token`` / ``token`` are deliberately ignored.
     """
     if not query_string:
         return None
@@ -94,10 +124,9 @@ def extract_query_token(query_string: str) -> Optional[str]:
     # Handle raw query with or without leading '?'.
     raw = query_string[1:] if query_string.startswith("?") else query_string
     params = parse_qs(raw, keep_blank_values=False)
-    for key in ("fs_token", "token"):
-        values = params.get(key) or []
-        if values and values[0].strip():
-            return values[0].strip()
+    values = params.get("fs_ticket") or []
+    if values and values[0].strip():
+        return values[0].strip()
     return None
 
 
@@ -171,11 +200,15 @@ class SessionTokenMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         provided = extract_bearer_token(request.headers.get("authorization"))
-        if provided is None and allows_query_token(path):
-            # EventSource cannot send Authorization; allow scoped query token.
-            provided = extract_query_token(request.url.query or "")
+        authenticated = tokens_match(expected, provided)
+        if not authenticated and provided is None and allows_query_token(path):
+            # EventSource cannot send Authorization; allow only the scoped
+            # short-lived ticket, never the process session token.
+            authenticated = sse_ticket_is_valid(
+                extract_query_token(request.url.query or "")
+            )
 
-        if not tokens_match(expected, provided):
+        if not authenticated:
             return unauthorized_response(
                 "Missing or invalid Bearer session token"
             )

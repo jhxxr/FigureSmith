@@ -40,6 +40,14 @@ backend and the vendored AutoFigure-Edit application.
 - History artifacts, current artifacts, and uploaded SVGs share that egress
   boundary. Add `?download=1` only when a caller explicitly needs an
   attachment; the default response remains inline for the editor/preview.
+- When desktop auth is enabled, `/api/events/*` accepts only the short-lived
+  `fs_ticket` query credential (`FIGURESMITH_SSE_TICKET` plus an absolute
+  `FIGURESMITH_SSE_TICKET_EXPIRES_AT`); the long-lived session Bearer token is
+  never accepted in a URL. Both values are redacted from sidecar/backend logs.
+- Strict offline policy runs after AutoFigure resolves provider aliases,
+  default endpoints, image endpoints, and response-asset URLs. Only explicit
+  loopback `custom` providers are permitted; public providers, remote assets,
+  and unchecked redirects fail before a network client follows them.
 
 ### 4. Validation & Error Matrix
 

@@ -41,6 +41,21 @@ def test_active_external_and_doctype_content_is_rejected(payload: str) -> None:
     assert "<svg" not in str(exc_info.value)
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "<svg><rect/></svg>",
+        '<svg xmlns="http://www.w3.org/2000/svg"><image href="file:///tmp/x"/></svg>',
+        '<svg xmlns="http://www.w3.org/2000/svg"><image href="javascript:alert(1)"/></svg>',
+        '<svg xmlns="http://www.w3.org/2000/svg"><image href="//example.com/x"/></svg>',
+        '<svg xmlns="http://www.w3.org/2000/svg"><rect style="fill: \"red; stroke:black"/></svg>',
+    ],
+)
+def test_hostile_url_and_namespace_variants_are_rejected(payload: str) -> None:
+    with pytest.raises(UnsafeSvgContent):
+        sanitize_svg(payload)
+
+
 def test_local_reference_and_bounded_data_uri_are_allowed() -> None:
     encoded = base64.b64encode(b"png-bytes").decode("ascii")
     payload = (
@@ -56,6 +71,43 @@ def test_resource_limits_are_bounded() -> None:
     payload = '<svg xmlns="http://www.w3.org/2000/svg"><g/></svg>'
     with pytest.raises(UnsafeSvgContent):
         sanitize_svg(payload, limits=SvgLimits(max_elements=1))
+
+
+def test_depth_attribute_and_data_limits_are_bounded() -> None:
+    nested = '<svg xmlns="http://www.w3.org/2000/svg">' + ("<g>" * 4) + "x" + ("</g>" * 4) + "</svg>"
+    with pytest.raises(UnsafeSvgContent):
+        sanitize_svg(nested, limits=SvgLimits(max_depth=2))
+
+    encoded = base64.b64encode(b"0123456789").decode("ascii")
+    data_svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg">'
+        f'<image href="data:image/png;base64,{encoded}"/>'
+        "</svg>"
+    )
+    with pytest.raises(UnsafeSvgContent):
+        sanitize_svg(data_svg, limits=SvgLimits(max_data_uri_bytes=4))
+
+
+def test_legal_scientific_svg_features_survive() -> None:
+    payload = """
+    <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+         viewBox="0 0 100 100">
+      <defs>
+        <linearGradient id="grad"><stop offset="0" stop-color="#fff"/><stop offset="1" stop-color="#000"/></linearGradient>
+        <clipPath id="clip"><rect width="90" height="90"/></clipPath>
+        <marker id="arrow" markerWidth="4" markerHeight="4" refX="2" refY="2"><circle r="2"/></marker>
+      </defs>
+      <g clip-path="url(#clip)" transform="translate(2 2)" style="fill:url(#grad);stroke:#111">
+        <path d="M0 0 L80 80" marker-end="url(#arrow)"/>
+        <text x="4" y="20"><tspan>Figure 1</tspan></text>
+        <use xlink:href="#arrow" x="20" y="20"/>
+      </g>
+    </svg>
+    """
+    safe = sanitize_svg(payload).data
+    assert b"clipPath" in safe
+    assert b"marker-end" in safe
+    assert b"Figure 1" in safe
 
 
 def test_vendor_artifact_egress_sanitizes_history_file(tmp_path, monkeypatch) -> None:

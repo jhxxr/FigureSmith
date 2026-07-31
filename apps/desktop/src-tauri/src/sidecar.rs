@@ -12,10 +12,11 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// Always loopback for desktop spawn — refuse any other host.
 const BIND_HOST: &str = "127.0.0.1";
+const SSE_TICKET_TTL_SECS: u64 = 10 * 60;
 
 #[derive(Debug, Clone)]
 pub struct SessionInfo {
@@ -23,6 +24,8 @@ pub struct SessionInfo {
     pub api_base: String,
     /// One-time process session token (memory only; never persist).
     pub token: String,
+    /// Short-lived credential used only in the EventSource query string.
+    pub sse_ticket: String,
 }
 
 pub struct SidecarState {
@@ -33,6 +36,7 @@ struct SidecarInner {
     child: Option<Child>,
     port: u16,
     token: String,
+    sse_ticket: String,
     ready: bool,
 }
 
@@ -82,6 +86,8 @@ impl SidecarState {
     pub fn start(repo_root: PathBuf) -> Result<Self, String> {
         let port = find_free_port()?;
         let token = generate_token();
+        let sse_ticket = generate_token();
+        let sse_ticket_expires_at = unix_now_secs().saturating_add(SSE_TICKET_TTL_SECS);
         let python = resolve_python(&repo_root)?;
         let main_py = repo_root.join("apps").join("backend").join("main.py");
         if !main_py.is_file() {
@@ -112,6 +118,11 @@ impl SidecarState {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .env("FIGURESMITH_SESSION_TOKEN", &token)
+            .env("FIGURESMITH_SSE_TICKET", &sse_ticket)
+            .env(
+                "FIGURESMITH_SSE_TICKET_EXPIRES_AT",
+                sse_ticket_expires_at.to_string(),
+            )
             .env("FIGURESMITH_STRICT_OFFLINE", "1")
             .env("FIGURESMITH_FORCE_LOCAL_SAM", "1")
             .env("FIGURESMITH_HOST", BIND_HOST)
@@ -166,19 +177,27 @@ impl SidecarState {
         // Redact token if it ever appears (should not).
         if let Some(stdout) = pending.child_mut()?.stdout.take() {
             let token_for_redact = token.clone();
+            let ticket_for_redact = sse_ticket.clone();
             thread::spawn(move || {
                 let reader = BufReader::new(stdout);
                 for line in reader.lines().map_while(Result::ok) {
-                    eprintln!("[sidecar] {}", redact(&line, &token_for_redact));
+                    eprintln!(
+                        "[sidecar] {}",
+                        redact_many(&line, &[&token_for_redact, &ticket_for_redact])
+                    );
                 }
             });
         }
         if let Some(stderr) = pending.child_mut()?.stderr.take() {
             let token_for_redact = token.clone();
+            let ticket_for_redact = sse_ticket.clone();
             thread::spawn(move || {
                 let reader = BufReader::new(stderr);
                 for line in reader.lines().map_while(Result::ok) {
-                    eprintln!("[sidecar:err] {}", redact(&line, &token_for_redact));
+                    eprintln!(
+                        "[sidecar:err] {}",
+                        redact_many(&line, &[&token_for_redact, &ticket_for_redact])
+                    );
                 }
             });
         }
@@ -193,6 +212,7 @@ impl SidecarState {
             child: Some(child),
             port,
             token,
+            sse_ticket,
             ready: true,
         }));
 
@@ -217,6 +237,7 @@ impl SidecarState {
             port: g.port,
             api_base: format!("http://{BIND_HOST}:{}", g.port),
             token: g.token.clone(),
+            sse_ticket: g.sse_ticket.clone(),
         })
     }
 
@@ -288,6 +309,13 @@ fn generate_token() -> String {
     hex_encode(&bytes)
 }
 
+fn unix_now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0)
+}
+
 fn hex_encode(bytes: &[u8]) -> String {
     const HEX: &[u8; 16] = b"0123456789abcdef";
     let mut out = String::with_capacity(bytes.len() * 2);
@@ -298,11 +326,20 @@ fn hex_encode(bytes: &[u8]) -> String {
     out
 }
 
-fn redact(line: &str, token: &str) -> String {
-    if token.is_empty() || !line.contains(token) {
-        return line.to_string();
+fn redact_many(line: &str, secrets: &[&str]) -> String {
+    let mut redacted = line.to_string();
+    for (index, secret) in secrets.iter().enumerate() {
+        if secret.is_empty() || !redacted.contains(secret) {
+            continue;
+        }
+        let replacement = if index == 0 {
+            "[REDACTED_SESSION_TOKEN]"
+        } else {
+            "[REDACTED_SSE_TICKET]"
+        };
+        redacted = redacted.replace(secret, replacement);
     }
-    line.replace(token, "[REDACTED_SESSION_TOKEN]")
+    redacted
 }
 
 pub fn find_free_port() -> Result<u16, String> {
@@ -534,10 +571,10 @@ mod tests {
     fn redact_hides_token() {
         let t = "abc123secret";
         assert_eq!(
-            redact("tok=abc123secret end", t),
+            redact_many("tok=abc123secret end", &[t]),
             "tok=[REDACTED_SESSION_TOKEN] end"
         );
-        assert_eq!(redact("clean line", t), "clean line");
+        assert_eq!(redact_many("clean line", &[t]), "clean line");
     }
 
     #[test]
@@ -563,6 +600,7 @@ mod tests {
             child: Some(child),
             port: 1,
             token: "test-token".into(),
+            sse_ticket: "test-ticket".into(),
             ready: true,
         }));
         let (tx, rx) = std::sync::mpsc::channel();

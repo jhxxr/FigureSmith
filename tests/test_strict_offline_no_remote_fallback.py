@@ -107,6 +107,16 @@ def test_server_rejects_remote_under_strict_source() -> None:
     assert "validate_offline_endpoint" in text
 
 
+def test_effective_provider_defaults_are_gated_in_vendor() -> None:
+    text = (REPO / "vendor" / "autofigure_edit" / "autofigure2.py").read_text(
+        encoding="utf-8"
+    )
+    assert "_figuresmith_validate_effective_offline" in text
+    assert "validate_effective_offline_policy" in text
+    assert "allow_redirects=not strict" in text
+    assert "OFFLINE_REDIRECT_FORBIDDEN" in text
+
+
 def test_cli_flags_present() -> None:
     text = (REPO / "vendor" / "autofigure_edit" / "autofigure2.py").read_text(encoding="utf-8")
     assert "--sam_checkpoint_path" in text

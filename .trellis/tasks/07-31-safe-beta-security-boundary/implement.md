@@ -2,16 +2,16 @@
 
 ## Start Gate
 
-- [ ] Confirm `07-31-safe-beta-runtime-integration` has implemented and tested
+- [x] Confirm `07-31-safe-beta-runtime-integration` has implemented and tested
       the production composition and authenticated bootstrap contract described
       in `design.md`.
-- [ ] Confirm the runtime contract provides one canonical loopback `apiBase`, a
+- [x] Confirm the runtime contract provides one canonical loopback `apiBase`, a
       Rust-private token before navigation, an exact dynamic capability, and a
       document-start initialization script on every remote navigation.
-- [ ] Re-read `prd.md` and `design.md` after the upstream task lands; update this
+- [x] Re-read `prd.md` and `design.md` after the upstream task lands; update this
       plan if its public DTO or hook name differs, then obtain fresh planning
       approval before `task.py start`.
-- [ ] Confirm `07-31-safe-beta-windows-runtime` records this task as a release
+- [x] Confirm `07-31-safe-beta-windows-runtime` records this task as a release
       gate and will not publish or label a Beta artifact early.
 
 ## 1. Establish SVG Fixtures And Sanitizer Contract

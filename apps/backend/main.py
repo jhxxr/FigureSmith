@@ -240,11 +240,11 @@ def create_production_app(
     _mount_desktop_bridge(app)
     _mount_figuresmith_ui(app)
 
-    # This must remain the final route: vendor UI/API is an opaque fallback.
-    app.mount("/", vendor_app)
-
     if install_auth:
         _install_security(app)
+
+    # This must remain the final route: vendor UI/API is an opaque fallback.
+    app.mount("/", vendor_app)
     return app
 
 

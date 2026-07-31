@@ -414,6 +414,7 @@ fn spawn_liveness_monitor(
     on_unexpected_exit: Arc<dyn Fn() + Send + Sync>,
 ) {
     thread::spawn(move || loop {
+        let mut orphaned_child = None;
         let unexpected_exit = {
             let mut g = match inner.lock() {
                 Ok(g) => g,
@@ -432,12 +433,21 @@ fn spawn_liveness_monitor(
                 Ok(None) => false,
                 Err(err) => {
                     g.ready = false;
-                    let _ = g.child.take();
+                    // `try_wait` can fail without reaping the child. Retain
+                    // ownership long enough to terminate and reap it instead
+                    // of dropping `Child` and leaking the backend process.
+                    orphaned_child = g.child.take();
                     eprintln!("[FigureSmith] sidecar liveness probe failed: {err}");
                     true
                 }
             }
         };
+        if let Some(mut child) = orphaned_child {
+            let pid = child.id();
+            force_kill_tree(pid);
+            let _ = child.kill();
+            let _ = child.wait();
+        }
         if unexpected_exit {
             on_unexpected_exit();
             return;

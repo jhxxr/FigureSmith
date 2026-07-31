@@ -109,6 +109,10 @@ def test_vendor_helpers_missing_checkpoint_no_hf(
     assert "checkpoint_path=checkpoint_path" in autofigure
     assert "sam_checkpoint_path" in autofigure
     assert "FIGURESMITH-BEGIN: local-sam3-load" in autofigure
+    assert "torch.autocast(" in autofigure
+    assert 'enabled=device == "cuda"' in autofigure
+    assert 'boxes.float().cpu().numpy()' in autofigure
+    assert 'scores.float().cpu().numpy()' in autofigure
 
     # Simulate the preflight helper logic used in vendor:
     from figuresmith.models.sam3_loader import validate_sam3_checkpoint

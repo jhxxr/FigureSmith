@@ -2108,36 +2108,44 @@ def segment_with_sam3(
         )
         # --- FIGURESMITH-END: local-sam3-load ---
         processor = Sam3Processor(model, device=device)
-        inference_state = processor.set_image(image)
+        # --- FIGURESMITH-BEGIN: local-sam3-inference ---
+        # SAM3's fused image path produces bfloat16 intermediates. Keep image
+        # and prompt inference in one autocast scope so they match the model's
+        # float32 parameters, as required by the official examples.
+        with torch.autocast(
+            device_type=device, dtype=torch.bfloat16, enabled=device == "cuda"
+        ):
+            inference_state = processor.set_image(image)
 
-        for prompt in prompt_list:
-            print(f"\n  正在检测: '{prompt}'")
-            output = processor.set_text_prompt(state=inference_state, prompt=prompt)
+            for prompt in prompt_list:
+                print(f"\n  正在检测: '{prompt}'")
+                output = processor.set_text_prompt(state=inference_state, prompt=prompt)
 
-            boxes = output["boxes"]
-            scores = output["scores"]
+                boxes = output["boxes"]
+                scores = output["scores"]
 
-            if isinstance(boxes, torch.Tensor):
-                boxes = boxes.cpu().numpy()
-            if isinstance(scores, torch.Tensor):
-                scores = scores.cpu().numpy()
+                if isinstance(boxes, torch.Tensor):
+                    boxes = boxes.float().cpu().numpy()
+                if isinstance(scores, torch.Tensor):
+                    scores = scores.float().cpu().numpy()
 
-            prompt_count = 0
-            for box, score in zip(boxes, scores):
-                if score >= min_score:
-                    x1, y1, x2, y2 = int(box[0]), int(box[1]), int(box[2]), int(box[3])
-                    all_detected_boxes.append({
-                        "x1": x1, "y1": y1, "x2": x2, "y2": y2,
-                        "score": float(score),
-                        "prompt": prompt  # 记录来源 prompt
-                    })
-                    prompt_count += 1
-                    print(f"    对象 {prompt_count}: ({x1}, {y1}, {x2}, {y2}), score={score:.3f}")
-                else:
-                    print(f"    跳过: score={score:.3f} < {min_score}")
+                prompt_count = 0
+                for box, score in zip(boxes, scores):
+                    if score >= min_score:
+                        x1, y1, x2, y2 = int(box[0]), int(box[1]), int(box[2]), int(box[3])
+                        all_detected_boxes.append({
+                            "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+                            "score": float(score),
+                            "prompt": prompt  # 记录来源 prompt
+                        })
+                        prompt_count += 1
+                        print(f"    对象 {prompt_count}: ({x1}, {y1}, {x2}, {y2}), score={score:.3f}")
+                    else:
+                        print(f"    跳过: score={score:.3f} < {min_score}")
 
-            print(f"  '{prompt}' 检测到 {prompt_count} 个有效对象")
-            total_detected += prompt_count
+                print(f"  '{prompt}' 检测到 {prompt_count} 个有效对象")
+                total_detected += prompt_count
+        # --- FIGURESMITH-END: local-sam3-inference ---
 
         del model, processor
         if torch.cuda.is_available():

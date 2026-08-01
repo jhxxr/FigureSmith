@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import importlib.metadata
+import importlib.util
+import json
 import logging
 import os
 import platform
+import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -31,6 +36,164 @@ GPU_MISSING_EN = (
     "Install an NVIDIA driver and a CUDA-enabled PyTorch build, "
     "or confirm model weights are imported on the Models page."
 )
+
+
+_DEFAULT_DEPENDENCIES = (
+    {"distribution": "fastapi", "import": "fastapi", "scope": "bootstrap", "requirement": "fastapi>=0.110,<1.0"},
+    {"distribution": "uvicorn", "import": "uvicorn", "scope": "bootstrap", "requirement": "uvicorn[standard]>=0.24,<1.0"},
+    {"distribution": "pydantic", "import": "pydantic", "scope": "bootstrap", "requirement": "pydantic>=2.6,<3.0"},
+    {"distribution": "python-multipart", "import": "multipart", "scope": "bootstrap", "requirement": "python-multipart>=0.0.9,<1.0"},
+    {"distribution": "torch", "import": "torch", "scope": "models", "requirement": "torch>=2.1"},
+    {"distribution": "torchvision", "import": "torchvision", "scope": "models", "requirement": "torchvision>=0.16"},
+    {"distribution": "sam3", "import": "sam3", "scope": "models", "requirement": "sam3"},
+)
+
+
+def _load_dependency_contract() -> list[dict[str, str]]:
+    path = Path(__file__).with_name("dependencies.json")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        packages = data.get("packages")
+        if isinstance(packages, list):
+            valid = [
+                item
+                for item in packages
+                if isinstance(item, dict)
+                and isinstance(item.get("distribution"), str)
+                and isinstance(item.get("import"), str)
+                and isinstance(item.get("scope"), str)
+                and isinstance(item.get("requirement"), str)
+            ]
+            if valid:
+                return valid
+    except (OSError, json.JSONDecodeError, TypeError):
+        pass
+    return [dict(item) for item in _DEFAULT_DEPENDENCIES]
+
+
+def _requirements_root() -> Path | None:
+    candidates: list[Path] = []
+    runtime_root = os.environ.get("FIGURESMITH_RUNTIME_ROOT", "").strip()
+    if runtime_root:
+        candidates.append(Path(runtime_root).expanduser())
+    # Source development keeps the user-facing lists under scripts/runtime;
+    # packaged runs place the same files at the application-pack root.
+    try:
+        candidates.append(Path(__file__).resolve().parents[4] / "scripts" / "runtime")
+    except IndexError:
+        pass
+    candidates.append(Path.cwd())
+    for candidate in candidates:
+        if (candidate / "requirements-runtime.txt").is_file():
+            return candidate
+    return None
+
+
+def probe_dependency_status() -> dict[str, Any]:
+    """Report user-environment packages without importing heavyweight ML code."""
+    packages = _load_dependency_contract()
+    checked: list[dict[str, Any]] = []
+    for item in packages:
+        import_name = item["import"]
+        installed = False
+        error_name: str | None = None
+        try:
+            installed = importlib.util.find_spec(import_name) is not None
+        except Exception as exc:  # A broken namespace package should be visible.
+            error_name = type(exc).__name__
+        version = None
+        if installed:
+            try:
+                version = importlib.metadata.version(item["distribution"])
+            except importlib.metadata.PackageNotFoundError:
+                version = None
+            except Exception:
+                version = None
+        checked.append(
+            {
+                "distribution": item["distribution"],
+                "import": import_name,
+                "scope": item["scope"],
+                "requirement": item["requirement"],
+                "installed": installed,
+                "version": version,
+                "error": error_name,
+            }
+        )
+
+    version_info = sys.version_info
+    python_supported = (3, 10) <= (version_info.major, version_info.minor) < (3, 13)
+    missing_bootstrap = [
+        item["distribution"]
+        for item in checked
+        if item["scope"] == "bootstrap" and not item["installed"]
+    ]
+    missing_models = [
+        item["distribution"]
+        for item in checked
+        if item["scope"] == "models" and not item["installed"]
+    ]
+    missing_svg = [
+        item["distribution"]
+        for item in checked
+        if item["scope"] == "svg" and not item["installed"]
+    ]
+    requirements_root = _requirements_root()
+    managed_root_raw = os.environ.get("FIGURESMITH_MANAGED_PYTHON_DIR", "").strip()
+    managed_root = Path(managed_root_raw).expanduser() if managed_root_raw else None
+    try:
+        managed_environment = bool(
+            managed_root
+            and os.path.commonpath(
+                [
+                    os.path.normcase(str(Path(sys.executable).resolve())),
+                    os.path.normcase(str(managed_root.resolve())),
+                ]
+            )
+            == os.path.normcase(str(managed_root.resolve()))
+        )
+    except (OSError, ValueError):
+        managed_environment = False
+    requirements = {
+        name: (requirements_root / name if requirements_root else Path(name))
+        for name in (
+            "requirements-runtime.txt",
+            "requirements-bootstrap.txt",
+            "requirements-models.txt",
+        )
+    }
+
+    def install_command(name: str) -> str:
+        return f'"{sys.executable}" -m pip install -r "{requirements[name]}"'
+
+    if missing_bootstrap and missing_models:
+        selected_install_command = install_command("requirements-runtime.txt")
+    elif missing_bootstrap:
+        selected_install_command = install_command("requirements-bootstrap.txt")
+    elif missing_models:
+        selected_install_command = install_command("requirements-models.txt")
+    else:
+        selected_install_command = install_command("requirements-runtime.txt")
+
+    return {
+        "python_executable": sys.executable,
+        "python_version": platform.python_version(),
+        "python_supported": python_supported,
+        "managed_environment": managed_environment,
+        "managed_environment_root": str(managed_root) if managed_root else None,
+        "packages": checked,
+        "missing_bootstrap": missing_bootstrap,
+        "missing_models": missing_models,
+        "missing_svg": missing_svg,
+        "bootstrap_ready": python_supported and not missing_bootstrap,
+        "models_ready": not missing_models,
+        "svg_ready": not missing_svg,
+        "requirements_file": "requirements-runtime.txt",
+        "requirements_root": str(requirements_root) if requirements_root else None,
+        "bootstrap_install_command": install_command("requirements-bootstrap.txt"),
+        "model_install_command": install_command("requirements-models.txt"),
+        "install_command": selected_install_command,
+    }
 
 
 def reset_shutdown_state_for_tests() -> None:
@@ -97,7 +260,7 @@ def _write_onboarding_completed(settings_path: Path, completed: bool) -> None:
 
 
 def probe_gpu_status() -> dict[str, Any]:
-    """Probe torch/CUDA safely — never raises."""
+    """Probe Torch/CUDA in a disposable process so native aborts stay isolated."""
     result: dict[str, Any] = {
         "gpu_available": False,
         "gpu_name": None,
@@ -108,56 +271,84 @@ def probe_gpu_status() -> dict[str, Any]:
         "torch_version": None,
         "probe_error": None,
     }
+    probe = r'''
+import json
+import sys
+
+result = {
+    "gpu_available": False,
+    "gpu_name": None,
+    "cuda_version": None,
+    "vram_total_mb": None,
+    "vram_free_mb": None,
+    "pytorch_cuda": False,
+    "torch_version": None,
+    "probe_error": None,
+}
+try:
+    import torch
+    result["torch_version"] = getattr(torch, "__version__", None)
+    result["cuda_version"] = getattr(getattr(torch, "version", None), "cuda", None)
     try:
-        import torch  # type: ignore
-    except Exception as exc:  # ImportError or environment issues
-        result["probe_error"] = f"torch_unavailable:{type(exc).__name__}"
-        return result
-
-    try:
-        result["torch_version"] = getattr(torch, "__version__", None)
-        cuda_is_available = False
-        try:
-            cuda_is_available = bool(torch.cuda.is_available())
-        except Exception as exc:
-            result["probe_error"] = f"cuda_is_available_failed:{type(exc).__name__}"
-            return result
-
-        result["pytorch_cuda"] = cuda_is_available
-        result["gpu_available"] = cuda_is_available
-
-        try:
-            result["cuda_version"] = getattr(torch.version, "cuda", None)
-        except Exception:
-            result["cuda_version"] = None
-
-        if not cuda_is_available:
-            return result
-
+        result["pytorch_cuda"] = bool(torch.cuda.is_available())
+        result["gpu_available"] = result["pytorch_cuda"]
+    except BaseException as exc:
+        result["probe_error"] = "cuda_is_available_failed:" + type(exc).__name__
+    if result["gpu_available"]:
         try:
             if torch.cuda.device_count() > 0:
                 result["gpu_name"] = torch.cuda.get_device_name(0)
-        except Exception as exc:
-            result["probe_error"] = f"device_name_failed:{type(exc).__name__}"
-
+        except BaseException as exc:
+            result["probe_error"] = "device_name_failed:" + type(exc).__name__
         try:
-            free_b, total_b = torch.cuda.mem_get_info(0)
-            result["vram_total_mb"] = int(total_b // (1024 * 1024))
-            result["vram_free_mb"] = int(free_b // (1024 * 1024))
-        except Exception:
-            # mem_get_info may be missing on older builds; try properties.
+            free_bytes, total_bytes = torch.cuda.mem_get_info(0)
+            result["vram_total_mb"] = int(total_bytes // (1024 * 1024))
+            result["vram_free_mb"] = int(free_bytes // (1024 * 1024))
+        except BaseException:
             try:
                 props = torch.cuda.get_device_properties(0)
                 total = int(getattr(props, "total_memory", 0) or 0)
                 if total > 0:
                     result["vram_total_mb"] = int(total // (1024 * 1024))
-            except Exception as exc:
-                if not result.get("probe_error"):
-                    result["probe_error"] = f"vram_probe_failed:{type(exc).__name__}"
-    except Exception as exc:  # pragma: no cover - defensive
-        result["probe_error"] = f"gpu_probe_failed:{type(exc).__name__}"
-        result["gpu_available"] = False
-        result["pytorch_cuda"] = False
+            except BaseException as exc:
+                result["probe_error"] = "vram_probe_failed:" + type(exc).__name__
+except BaseException as exc:
+    result["probe_error"] = "torch_unavailable:" + type(exc).__name__
+print(json.dumps(result, separators=(",", ":")))
+'''
+    child_env = dict(os.environ)
+    child_env.pop("PYTHONPATH", None)
+    child_env.pop("PYTHONSTARTUP", None)
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-c", probe],
+            capture_output=True,
+            text=True,
+            timeout=25,
+            env=child_env,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        result["probe_error"] = "torch_probe_timeout"
+        return result
+    except OSError as exc:
+        result["probe_error"] = f"torch_probe_unavailable:{type(exc).__name__}"
+        return result
+
+    lines = completed.stdout.splitlines()
+    payload: dict[str, Any] | None = None
+    for line in reversed(lines):
+        try:
+            candidate = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(candidate, dict):
+            payload = candidate
+            break
+    if payload is not None:
+        result.update(payload)
+    if completed.returncode != 0 and not result.get("probe_error"):
+        result["probe_error"] = f"torch_probe_exit:{completed.returncode}"
     return result
 
 
@@ -200,6 +391,14 @@ def build_system_status(
         pass
 
     gpu = probe_gpu_status()
+    dependencies = probe_dependency_status()
+    gpu_probe_error = str(gpu.get("probe_error") or "")
+    if gpu_probe_error and "torch" in gpu_probe_error.lower():
+        model_missing = list(dependencies.get("missing_models") or [])
+        if "torch" not in model_missing:
+            model_missing.append("torch (native probe failed)")
+        dependencies["missing_models"] = model_missing
+        dependencies["models_ready"] = False
     settings_path = _settings_path_for_manager(mgr)
     try:
         onboarding_completed = _read_onboarding_completed(settings_path)
@@ -218,6 +417,9 @@ def build_system_status(
         "version": __version__,
         "platform": plat,
         "python": platform.python_version(),
+        "python_executable": dependencies["python_executable"],
+        "python_supported": dependencies["python_supported"],
+        "dependencies": dependencies,
         "gpu_available": bool(gpu.get("gpu_available")),
         "gpu_name": gpu.get("gpu_name"),
         "cuda_version": gpu.get("cuda_version"),
@@ -263,6 +465,24 @@ def system_status(request: Request) -> dict[str, Any]:
                 "machine": platform.machine(),
             },
             "python": platform.python_version(),
+            "python_executable": sys.executable,
+            "python_supported": False,
+            "managed_environment": False,
+            "managed_environment_root": None,
+            "dependencies": {
+                "bootstrap_ready": False,
+                "models_ready": False,
+                "svg_ready": False,
+                "missing_bootstrap": [],
+                "missing_models": [],
+                "missing_svg": [],
+                "requirements_root": None,
+                "managed_environment": False,
+                "managed_environment_root": None,
+                "bootstrap_install_command": "python -m pip install -r requirements-bootstrap.txt",
+                "model_install_command": "python -m pip install -r requirements-models.txt",
+                "install_command": "python -m pip install -r requirements-runtime.txt",
+            },
             "gpu_available": False,
             "gpu_name": None,
             "cuda_version": None,

@@ -1,31 +1,34 @@
-# Windows Runtime Locks
+# Windows application-pack dependencies
 
-The standalone Windows runtime is assembled only from three reviewable lock
-files. They are deliberately separate from `apps/backend/requirements.txt`,
-which remains a developer declaration with version ranges.
+FigureSmith no longer attempts to ship CPython, PyTorch, CUDA wheels, or a
+fully resolved ML runtime. Those files are too hardware- and driver-specific
+for a reliable desktop artifact.
 
-| File | Purpose |
-| --- | --- |
-| `requirements-win-py312-cu128.lock.json` | Exact runtime wheels, URLs, tags, licenses, and SHA-256 hashes |
-| `sources.lock.json` | CPython/SAM3 source archives or immutable Git revisions and hashes |
-| `wheelhouse-manifest.json` | Exact files present in the offline wheel cache |
+The Windows application pack contains:
 
-Each lock carries `schema: 1`, `product: "FigureSmith"`, and the target
-`runtime` tuple `python: "3.12"`, `platform: "win_amd64"`, `cuda: "cu128"`.
-Wheels must be `.whl` files from HTTPS URLs with exact versions and lowercase
-SHA-256 hashes. Source Git entries require a full 40-character commit hash.
-Sdists, mutable branches, local paths, model weights, caches, and user-data
-directories are rejected.
+- `requirements-runtime.txt`, a reviewable set of user-environment package
+  ranges;
+- `app/backend/figuresmith/runtime/dependencies.json`, which maps distribution
+  names to import names and separates bootstrap, model, generation, and SVG
+  scopes;
+- `runtime-manifest.json`, a hash inventory of application files only.
 
-Validate a lock set and its acquired cache with:
+At startup the desktop shell scans visible Python 3.10-3.12 candidates and uses
+one only as a base. It creates `%LOCALAPPDATA%\FigureSmith\python-env` and
+installs bootstrap packages into that isolated environment. The base Python and
+other environments are never modified. Torch/torchvision/SAM3 and GPU support
+are checked separately by the backend in an isolated child process, so a broken
+native Torch installation cannot crash the editor. The welcome page shows the
+managed path, missing packages, and a copyable command for the isolated Python.
+
+For local inference, install model packages into the isolated environment after
+first launch, choosing the CUDA-compatible Torch pair for the target machine:
 
 ```powershell
-./scripts/validate-runtime-locks.ps1 `
-  -LockRoot .\runtime\locks `
-  -Wheelhouse .\runtime\wheelhouse
+# Use the exact python.exe path shown by the welcome page.
+<isolated-python> -m pip install -r requirements-models.txt
 ```
 
-The repository intentionally does not commit a fake lock set or multi-gigabyte
-CUDA wheels. Until a real Windows Python 3.12/cu128 acquisition produces these
-three files and passes the validator, the desktop runtime assembler must fail
-closed instead of resolving newer packages online.
+Model weights remain external and are imported through the Models page. The
+application pack never contains Python executables, wheels, caches, user data,
+or model weights.

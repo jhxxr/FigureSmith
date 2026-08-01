@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-28  
 **Product:** FigureSmith / 图匠  
-**Version:** 0.6.1 (see root `VERSION`)<br>
+**Version:** 0.6.2 (see root `VERSION`)<br>
 **Task:** `.trellis/tasks/07-28-figuresmith-phase6-windows-packaging`
 
 ## Packaging baseline
@@ -34,11 +34,12 @@ Ship **packaging scripts and release documentation** for Windows x86_64:
 
 ## Layout
 
-### dist-runtime/FigureSmith-Runtime-Windows-NVIDIA-cu128-0.6.1/
-
-- `app/backend`, `app/vendor/*`, `app/resources` (filtered)
-- `requirements-runtime.txt`, `scripts/install-deps.ps1`, `scripts/run-backend.ps1`
-- `README-RUNTIME.md`, `MANIFEST.json`, licenses
+- `FigureSmith-Runtime-Windows-<version>/`
+  - `app/backend`, `app/vendor/*`, `app/resources` (filtered application source)
+  - `requirements-runtime.txt`, `requirements-bootstrap.txt`, `requirements-models.txt`
+  - `app/backend/figuresmith/runtime/dependencies.json`
+  - `README-RUNTIME.md`, `MANIFEST.json`, `runtime-manifest.json`, licenses
+  - no Python interpreter, dependency wheels, CUDA runtime, SAM3 source, model weights, caches, or user data
 - Optional `.zip` + `checksums.txt`
 
 ### dist-desktop/
@@ -56,10 +57,10 @@ Ship **packaging scripts and release documentation** for Windows x86_64:
 ## Known limitations
 
 - Full NSIS/MSVC installer binary requires a successful `tauri build` on the builder machine
-- Runtime Pack intentionally remains a dependency-install code pack; it does **not**
-  vendor an isolated CPython/locked CUDA wheelhouse. The target machine installs
-  compatible Python/CUDA/PyTorch/SAM3 dependencies, then imports external SAM3/RMBG
-  model weights. It is not a self-contained desktop sidecar runtime.
+- The Runtime Pack deliberately does not vendor Python or the ML stack. On first launch the desktop selects a supported user-installed Python 3.10-3.12 only as a base, creates `%LOCALAPPDATA%\FigureSmith\python-env`, and installs bootstrap packages into that isolated environment. The base Python remains unchanged.
+- `requirements-runtime.txt` is the combined user-environment guidance; model packages remain optional and are installed into the isolated environment only when local inference is needed.
+- The welcome page exposes the isolated environment path, missing model packages, copyable commands, and visual model import/verification progress.
+- The pack and desktop build fail if model weights, caches, wheels, Python executables, or dependency DLLs are present.
 - `build-desktop.ps1` fails when the Tauri executable is missing; it never emits
   a source-only Portable placeholder.
 - Code signing not configured (optional future hook)

@@ -18,6 +18,8 @@ def test_is_weight_file() -> None:
     assert is_weight_file(Path("x/y/model.onnx"))
     assert not is_weight_file("manager.py")
     assert not is_weight_file("readme.md")
+    assert is_weight_file("python/python312._pth")
+    assert is_weight_file("third_party/model.pth")
 
 
 def test_excludes_weights_but_keeps_python_models_pkg(tmp_path: Path) -> None:

@@ -34,6 +34,8 @@ def is_weight_file(path: Path | str) -> bool:
     p = Path(path)
     name = p.name.lower()
     suffix = p.suffix.lower()
+    if name == "python312._pth":
+        return True
     if suffix in WEIGHT_SUFFIXES:
         return True
     # HuggingFace style: model-00001-of-00002.safetensors already caught; pytorch_model.bin

@@ -1,4 +1,4 @@
-"""Runtime manifest generation and verification contracts."""
+"""Application-only runtime manifest contracts."""
 
 from __future__ import annotations
 
@@ -17,9 +17,12 @@ from figuresmith.runtime.manifest import (
 )
 
 
+ROOT = Path(__file__).resolve().parents[1]
+
+
 def test_manifest_import_does_not_require_backend_runtime_dependencies() -> None:
     env = dict(os.environ)
-    backend_root = Path(__file__).parents[1] / "apps" / "backend"
+    backend_root = ROOT / "apps" / "backend"
     env["PYTHONPATH"] = str(backend_root)
     result = subprocess.run(
         [
@@ -39,77 +42,91 @@ def test_manifest_import_does_not_require_backend_runtime_dependencies() -> None
     assert result.returncode == 0, result.stderr or result.stdout
 
 
-def _complete_runtime(root: Path) -> None:
+def _application_pack(root: Path) -> None:
     (root / "app" / "backend").mkdir(parents=True)
     (root / "app" / "vendor" / "autofigure_edit").mkdir(parents=True)
     (root / "app" / "backend" / "main.py").write_text("print('ok')\n", encoding="utf-8")
     (root / "app" / "vendor" / "autofigure_edit" / "server.py").write_text(
         "app = object()\n", encoding="utf-8"
     )
-    # A tiny fixture is enough; the assembly pipeline supplies the real
-    # embeddable interpreter before marking a runtime complete.
-    (root / "python.exe").write_bytes(b"python-fixture")
+    (root / "requirements-runtime.txt").write_text(
+        "fastapi>=0.110,<1.0\n", encoding="utf-8"
+    )
 
 
-def test_complete_manifest_round_trip_with_unicode_root(tmp_path: Path) -> None:
+def test_application_manifest_round_trip_without_embedded_python(tmp_path: Path) -> None:
     root = tmp_path / "运行时 pack"
     root.mkdir()
-    _complete_runtime(root)
+    _application_pack(root)
 
-    manifest_path = write_runtime_manifest(root, version="0.6.0")
+    manifest_path = write_runtime_manifest(root, version="0.6.2")
     manifest = verify_runtime_manifest(manifest_path, root)
 
     assert manifest["product"] == "FigureSmith"
-    assert manifest["runtime_complete"] is True
+    assert manifest["application_only"] is True
+    assert manifest["python_required"] == "external"
+    assert manifest["runtime_complete"] is False
     assert manifest["contains_weights"] is False
     assert manifest["file_count"] == 3
     assert all("\\" not in item["path"] for item in manifest["files"])
+    assert not (root / "python").exists()
 
 
 def test_manifest_rejects_tampered_file_and_extra_file(tmp_path: Path) -> None:
     root = tmp_path / "runtime"
     root.mkdir()
-    _complete_runtime(root)
-    manifest_path = write_runtime_manifest(root, version="0.6.0")
+    _application_pack(root)
+    manifest_path = write_runtime_manifest(root, version="0.6.2")
 
     (root / "app" / "backend" / "main.py").write_text("tampered\n", encoding="utf-8")
     with pytest.raises(RuntimeManifestError, match="SHA-256 mismatch|size mismatch"):
         verify_runtime_manifest(manifest_path, root)
 
-    # Rebuild the inventory, then add an unlisted file to exercise the second
-    # independent check.
-    write_runtime_manifest(root, version="0.6.0")
+    write_runtime_manifest(root, version="0.6.2")
     (root / "unexpected.txt").write_text("not listed\n", encoding="utf-8")
     with pytest.raises(RuntimeManifestError, match="inventory mismatch"):
         verify_runtime_manifest(manifest_path, root)
 
 
-def test_manifest_rejects_weight_and_cache_files(tmp_path: Path) -> None:
+def test_manifest_rejects_weight_cache_and_embedded_python_files(tmp_path: Path) -> None:
     root = tmp_path / "runtime"
     root.mkdir()
-    _complete_runtime(root)
+    _application_pack(root)
     (root / "models").mkdir()
     (root / "models" / "sam3.pt").write_bytes(b"weights")
     with pytest.raises(RuntimeManifestError, match="weight-like file"):
-        build_runtime_manifest(root, version="0.6.0")
+        build_runtime_manifest(root, version="0.6.2")
 
     (root / "models" / "sam3.pt").unlink()
     (root / "__pycache__").mkdir()
     (root / "__pycache__" / "cache.pyc").write_bytes(b"cache")
     with pytest.raises(RuntimeManifestError, match="cache, build, or mutable-data"):
-        build_runtime_manifest(root, version="0.6.0")
+        build_runtime_manifest(root, version="0.6.2")
+
+    (root / "__pycache__" / "cache.pyc").unlink()
+    (root / "__pycache__").rmdir()
+    (root / "python").mkdir()
+    (root / "python" / "python.exe").write_bytes(b"interpreter")
+    with pytest.raises(RuntimeManifestError, match="weight-like|embedded Python"):
+        build_runtime_manifest(root, version="0.6.2")
 
 
-def test_incomplete_manifest_is_explicitly_not_release_runtime(tmp_path: Path) -> None:
+def test_complete_legacy_mode_requires_python_but_is_not_the_default(tmp_path: Path) -> None:
     root = tmp_path / "runtime"
     root.mkdir()
-    (root / "README.md").write_text("dependency-install pack\n", encoding="utf-8")
+    _application_pack(root)
+    with pytest.raises(RuntimeManifestError, match="python.exe"):
+        build_runtime_manifest(root, version="0.6.2", runtime_complete=True)
 
-    manifest_path = write_runtime_manifest(
-        root,
-        version="0.6.0",
-        runtime_complete=False,
+
+def test_manifest_without_application_only_is_rejected(tmp_path: Path) -> None:
+    root = tmp_path / "runtime"
+    root.mkdir()
+    _application_pack(root)
+    manifest_path = write_runtime_manifest(root, version="0.6.2")
+    data = manifest_path.read_text(encoding="utf-8").replace(
+        '"application_only": true', '"application_only": false'
     )
-    verify_runtime_manifest(manifest_path, root, require_complete=False)
-    with pytest.raises(RuntimeManifestError, match="not a complete packaged runtime"):
+    manifest_path.write_text(data, encoding="utf-8")
+    with pytest.raises(RuntimeManifestError, match="application-only"):
         verify_runtime_manifest(manifest_path, root)

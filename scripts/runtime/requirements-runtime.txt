@@ -1,0 +1,5 @@
+# FigureSmith complete environment guidance.
+# The desktop creates its own isolated environment and installs only the
+# bootstrap file automatically; model packages remain optional.
+-r requirements-bootstrap.txt
+-r requirements-models.txt

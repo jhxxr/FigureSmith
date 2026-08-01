@@ -1,0 +1,5 @@
+# Deprecated compatibility alias.
+# FigureSmith no longer packages a CPython/cu128 runtime or dependency wheels.
+# Use this from FigureSmith's isolated Python environment after first launch
+# environment, and select a CUDA-compatible torch/torchvision pair for the
+# target GPU.

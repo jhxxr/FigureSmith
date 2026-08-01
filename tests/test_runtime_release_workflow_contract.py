@@ -1,4 +1,4 @@
-"""Static checks for the Windows packaging and release workflow."""
+"""Static checks for the Windows application-pack release workflow."""
 
 from __future__ import annotations
 
@@ -68,42 +68,58 @@ def test_release_reasserts_no_weight_files_before_upload() -> None:
         assert pattern in workflow
 
 
-def test_windows_release_validates_dependency_pack_manifest_without_embedded_runtime() -> None:
+def test_windows_release_validates_application_only_runtime_manifest() -> None:
     workflow = _workflow()
 
-    assert "dist-runtime/**/runtime-manifest.json" in workflow
-    assert "-name 'runtime-manifest.json'" in workflow
-    assert "Validate dependency-install runtime manifest and artifacts" in workflow
+    assert "Validate application-only runtime manifest and artifacts" in workflow
     assert '$manifest.product -ne "FigureSmith"' in workflow
     assert "$manifest.version -ne $expectedVersion" in workflow
     assert "$manifest.contains_weights -ne $false" in workflow
     assert "$manifest.contains_cache -ne $false" in workflow
-    assert "runtime_complete" not in workflow
+    assert "$manifest.application_only -ne $true" in workflow
+    assert '$manifest.python_required -ne "external"' in workflow
+    assert "$manifest.runtime_complete -ne $false" in workflow
+    assert '"requirements-runtime.txt"' in workflow
+    assert '"requirements-bootstrap.txt"' in workflow
+    assert '"requirements-models.txt"' in workflow
+    assert '"app/backend/figuresmith/runtime/dependencies.json"' in workflow
+    assert "must not contain Python or dependency artifacts" in workflow
 
 
-def test_runtime_release_requires_exact_dependency_pack_artifacts() -> None:
+def test_runtime_release_requires_application_pack_artifacts() -> None:
     workflow = _workflow()
 
     for pattern in (
         '"MANIFEST.json"',
         '"runtime-manifest.json"',
         '"README-RUNTIME.md"',
+        '"requirements-runtime.txt"',
         '"$packName.zip"',
         '"checksums.txt"',
-        "Expected exactly one runtime directory",
-        "Expected exactly one runtime zip and checksums.txt",
-        "Expected exactly one MANIFEST.json and README-RUNTIME.md",
+        "Expected exactly one application runtime directory",
     ):
         assert pattern in workflow
 
 
-def test_release_notes_describe_external_models_and_target_install_boundary() -> None:
+def test_release_notes_describe_external_models_and_python() -> None:
     workflow = _workflow()
 
     assert "Models are external" in workflow
     assert "download and import them on the target machine" in workflow
-    assert "Target-machine dependency installation boundary" in workflow
-    assert "target machine must provide" in workflow
+    assert "User-managed Python environment" in workflow
+    assert "Python 3.10-3.12" in workflow
+    assert "does not install them" in workflow
+
+
+def test_desktop_job_stages_application_pack_before_tauri_build() -> None:
+    workflow = _workflow()
+
+    assert "needs: [test, package-runtime]" in workflow
+    assert "actions/download-artifact@v4" in workflow
+    assert "Stage application pack for Tauri resources" in workflow
+    assert "apps/desktop/src-tauri/runtime" in workflow
+    assert "$manifest.application_only -ne $true" in workflow
+    assert "$manifest.python_required -ne \"external\"" in workflow
 
 
 def test_release_notes_use_version_from_the_same_shell_step() -> None:

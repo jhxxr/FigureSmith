@@ -6,58 +6,103 @@
     <title>FigureSmith</title>
     <style>
       :root {
-        color-scheme: light dark;
+        color-scheme: dark;
         font-family: "Segoe UI", system-ui, sans-serif;
+        background: #0f1317;
+        color: #f1f5f7;
       }
+      * { box-sizing: border-box; }
       body {
         margin: 0;
         min-height: 100vh;
         display: grid;
         place-items: center;
-        background: #0b1220;
-        color: #e8eef9;
+        background: #0f1317;
       }
-      .card {
-        width: min(420px, 92vw);
-        padding: 1.5rem 1.75rem;
-        border-radius: 14px;
-        background: #121a2b;
-        border: 1px solid #24314d;
-        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+      .splash {
+        width: min(560px, calc(100vw - 32px));
+        padding: 28px;
+        border: 1px solid #35404a;
+        border-radius: 10px;
+        background: #171c21;
+        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
       }
-      h1 {
-        margin: 0 0 0.35rem;
-        font-size: 1.35rem;
-        letter-spacing: 0.02em;
+      .brand { display: flex; align-items: center; gap: 12px; }
+      .mark {
+        width: 38px;
+        height: 38px;
+        display: grid;
+        place-items: center;
+        border-radius: 8px;
+        background: #50d2b3;
+        color: #062a23;
+        font-size: 1.1rem;
+        font-weight: 800;
       }
-      p {
-        margin: 0.35rem 0;
-        color: #a9b6d3;
-        line-height: 1.45;
+      .brand-name { font-size: 1.05rem; font-weight: 700; }
+      .brand-sub { margin-top: 3px; color: #a8b5bd; font-size: 0.8rem; }
+      .eyebrow {
+        margin: 34px 0 8px;
+        color: #50d2b3;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
       }
-      #status {
-        margin-top: 1rem;
-        font-family: ui-monospace, Consolas, monospace;
-        font-size: 0.85rem;
-        color: #7dd3c7;
+      h1 { margin: 0; font-size: 1.55rem; line-height: 1.2; }
+      .copy { margin: 10px 0 0; color: #a8b5bd; line-height: 1.5; }
+      .status {
+        min-height: 68px;
+        margin-top: 20px;
+        padding: 14px;
+        border: 1px solid #35404a;
+        border-radius: 8px;
+        background: #20272e;
+        color: #d5f9ed;
+        font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+        font-size: 0.82rem;
+        line-height: 1.55;
         white-space: pre-wrap;
+        overflow-wrap: anywhere;
       }
-      .hint {
-        margin-top: 1rem;
-        font-size: 0.8rem;
-        color: #7f8bab;
+      .status.error { color: #fecaca; border-color: rgba(239, 68, 68, 0.45); background: rgba(239, 68, 68, 0.08); }
+      .setup-actions { margin-top: 16px; }
+      .setup-actions button {
+        width: 100%;
+        padding: 11px 14px;
+        border: 1px solid #50d2b3;
+        border-radius: 7px;
+        background: #50d2b3;
+        color: #062a23;
+        cursor: pointer;
+        font: inherit;
+        font-weight: 700;
       }
+      .setup-actions button:disabled { cursor: wait; opacity: 0.65; }
+      .setup-actions p { margin: 8px 0 0; color: #a8b5bd; font-size: 0.78rem; line-height: 1.45; }
+      .loading { display: inline-flex; align-items: center; gap: 8px; }
+      .dot { width: 7px; height: 7px; border-radius: 50%; background: #50d2b3; }
+      @media (max-width: 480px) { .splash { padding: 22px; } .eyebrow { margin-top: 26px; } }
     </style>
   </head>
   <body>
-    <main class="card">
-      <h1>FigureSmith / 图匠</h1>
-      <p>Starting local Python sidecar and loading the editor…</p>
-      <div id="status">Initializing…</div>
-      <p class="hint">
-        Model import is also available from the app menu (Models). The main UI is
-        served by the local backend on 127.0.0.1.
-      </p>
+    <main class="splash" aria-live="polite">
+      <div class="brand">
+        <div class="mark" aria-hidden="true">FS</div>
+        <div>
+          <div class="brand-name">FigureSmith / 图匠</div>
+          <div class="brand-sub">Local scientific figure workspace</div>
+        </div>
+      </div>
+      <p class="eyebrow">Local startup</p>
+      <h1>Preparing your workspace</h1>
+      <p class="copy">Checking Python and preparing a separate FigureSmith environment without changing your existing installations.</p>
+      <div id="status" class="status"><span class="loading"><span class="dot"></span>Checking Python environments...</span></div>
+      <div id="prepareEnvPanel" class="setup-actions" hidden>
+        <button id="prepareEnvButton" type="button">Create isolated FigureSmith environment</button>
+        <p id="prepareEnvHint">Creates a separate user environment and leaves your existing Python installations unchanged.</p>
+      </div>
+      <p class="footer">FigureSmith uses an isolated environment under your user data directory. Existing Python installations, model packages, and model files remain under your control.</p>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>

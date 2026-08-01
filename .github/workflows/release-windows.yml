@@ -18,10 +18,6 @@ on:
         description: "Skip Tauri desktop build (runtime-only)"
         type: boolean
         default: false
-      cuda_tag:
-        description: "Runtime CUDA tag label (e.g. cu128)"
-        type: string
-        default: "cu128"
 
 permissions:
   contents: read
@@ -54,8 +50,7 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          # Contract tests do not need full CUDA torch; install declared requirements.
-          pip install -r apps/backend/requirements.txt
+          pip install -r scripts/runtime/requirements-bootstrap.txt pytest httpx
 
       - name: Assert tag matches VERSION (tag builds only)
         if: startsWith(github.ref, 'refs/tags/v')
@@ -77,7 +72,7 @@ jobs:
     name: package-runtime
     needs: test
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -87,69 +82,46 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Build Runtime Pack
+      - name: Build application Runtime Pack
         shell: pwsh
-        run: |
-          $cuda = "${{ inputs.cuda_tag }}"
-          if ([string]::IsNullOrWhiteSpace($cuda)) { $cuda = "cu128" }
-          ./scripts/build-runtime.ps1 -CudaTag $cuda
+        run: ./scripts/build-runtime.ps1
 
-      - name: Validate dependency-install runtime manifest and artifacts
+      - name: Validate application-only runtime manifest and artifacts
         shell: pwsh
         run: |
           $expectedVersion = (Get-Content VERSION -Raw).Trim()
-          $cuda = "${{ inputs.cuda_tag }}"
-          if ([string]::IsNullOrWhiteSpace($cuda)) { $cuda = "cu128" }
-          $packName = "FigureSmith-Runtime-Windows-NVIDIA-$cuda-$expectedVersion"
+          $packName = "FigureSmith-Runtime-Windows-$expectedVersion"
           $runtimeRoot = Join-Path "dist-runtime" $packName
 
           $runtimeDirs = @(Get-ChildItem -Path dist-runtime -Directory)
           if ($runtimeDirs.Count -ne 1 -or $runtimeDirs[0].Name -ne $packName) {
             $names = ($runtimeDirs | ForEach-Object Name) -join ", "
-            throw "Expected exactly one runtime directory '$packName', found: $names"
+            throw "Expected exactly one application runtime directory '$packName', found: $names"
           }
-
-          $expectedFiles = @(
-            (Join-Path $runtimeRoot "MANIFEST.json"),
-            (Join-Path $runtimeRoot "runtime-manifest.json"),
-            (Join-Path $runtimeRoot "README-RUNTIME.md"),
-            (Join-Path "dist-runtime" "$packName.zip"),
-            (Join-Path "dist-runtime" "checksums.txt")
-          )
-          foreach ($path in $expectedFiles) {
-            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-              throw "Missing expected runtime artifact: $path"
+          if (-not (Test-Path (Join-Path "dist-runtime" "$packName.zip") -PathType Leaf)) { throw "Application runtime zip is missing" }
+          if (-not (Test-Path (Join-Path "dist-runtime" "checksums.txt") -PathType Leaf)) { throw "Runtime checksums are missing" }
+          foreach ($relative in @(
+            "MANIFEST.json",
+            "runtime-manifest.json",
+            "README-RUNTIME.md",
+            "requirements-runtime.txt",
+            "requirements-bootstrap.txt",
+            "requirements-models.txt",
+            "app/backend/figuresmith/runtime/dependencies.json"
+          )) {
+            if (-not (Test-Path (Join-Path $runtimeRoot $relative) -PathType Leaf)) {
+              throw "Missing application runtime file: $relative"
             }
           }
-
-          $zipFiles = @(Get-ChildItem -Path dist-runtime -Filter "*.zip" -File)
-          $checksumFiles = @(Get-ChildItem -Path dist-runtime -Filter "checksums.txt" -File)
-          if ($zipFiles.Count -ne 1 -or $checksumFiles.Count -ne 1) {
-            throw "Expected exactly one runtime zip and checksums.txt"
-          }
-
-          $manifests = @(Get-ChildItem -Path dist-runtime -Recurse -Filter MANIFEST.json -File)
-          $readmes = @(Get-ChildItem -Path dist-runtime -Recurse -Filter README-RUNTIME.md -File)
-          if ($manifests.Count -ne 1 -or $readmes.Count -ne 1) {
-            throw "Expected exactly one MANIFEST.json and README-RUNTIME.md"
-          }
-
-          $runtimeManifests = @(Get-ChildItem -Path dist-runtime -Recurse -Filter runtime-manifest.json -File)
-          if ($runtimeManifests.Count -ne 1) {
-            throw "Expected exactly one runtime-manifest.json, found $($runtimeManifests.Count)"
-          }
-          $manifest = Get-Content $runtimeManifests[0].FullName -Raw | ConvertFrom-Json
-          if ($manifest.product -ne "FigureSmith") {
-            throw "Runtime manifest product is not FigureSmith"
-          }
-          if ($manifest.version -ne $expectedVersion) {
-            throw "Runtime manifest version '$($manifest.version)' does not match VERSION '$expectedVersion'"
-          }
-          if ($manifest.contains_weights -ne $false) {
-            throw "Runtime manifest does not prove contains_weights=false"
-          }
-          if ($manifest.contains_cache -ne $false) {
-            throw "Runtime manifest does not prove contains_cache=false"
+          $manifest = Get-Content (Join-Path $runtimeRoot "runtime-manifest.json") -Raw | ConvertFrom-Json
+          if ($manifest.product -ne "FigureSmith") { throw "Runtime manifest product is not FigureSmith" }
+          if ($manifest.version -ne $expectedVersion) { throw "Runtime manifest version mismatch" }
+          if ($manifest.application_only -ne $true) { throw "Runtime manifest is not application-only" }
+          if ($manifest.python_required -ne "external") { throw "Runtime manifest does not declare external Python" }
+          if ($manifest.runtime_complete -ne $false) { throw "Runtime manifest claims embedded Python" }
+          if ($manifest.contains_weights -ne $false -or $manifest.contains_cache -ne $false) { throw "Runtime manifest safety flags are invalid" }
+          if (Get-ChildItem -Path $runtimeRoot -Recurse -File -Include "python.exe","python*.dll","*.whl" | Select-Object -First 1) {
+            throw "Application runtime pack must not contain Python or dependency artifacts"
           }
 
       - name: Assert no model weights
@@ -171,7 +143,7 @@ jobs:
 
   package-desktop:
     name: package-desktop
-    needs: test
+    needs: [test, package-runtime]
     if: ${{ github.event_name == 'push' || inputs.skip_desktop == false }}
     runs-on: windows-latest
     timeout-minutes: 180
@@ -198,6 +170,31 @@ jobs:
       - name: Sync version from VERSION file
         shell: pwsh
         run: ./scripts/ci/sync-version.ps1
+
+      - name: Download application runtime pack
+        uses: actions/download-artifact@v4
+        with:
+          name: figuresmith-runtime
+          path: downloaded-runtime
+
+      - name: Stage application pack for Tauri resources
+        shell: pwsh
+        run: |
+          $zip = Get-ChildItem -Path downloaded-runtime -Recurse -Filter "FigureSmith-Runtime-*.zip" -File | Select-Object -First 1
+          if ($null -eq $zip) { throw "Application runtime zip was not downloaded" }
+          $expanded = Join-Path $env:RUNNER_TEMP "figuresmith-runtime-expanded"
+          if (Test-Path $expanded) { Remove-Item $expanded -Recurse -Force }
+          Expand-Archive -LiteralPath $zip.FullName -DestinationPath $expanded -Force
+          $pack = Get-ChildItem -Path $expanded -Directory | Select-Object -First 1
+          if ($null -eq $pack) { throw "Runtime zip has no top-level directory" }
+          $target = Join-Path $PWD "apps/desktop/src-tauri/runtime"
+          if (Test-Path $target) { Remove-Item $target -Recurse -Force }
+          New-Item -ItemType Directory -Path $target -Force | Out-Null
+          Copy-Item (Join-Path $pack.FullName "*") $target -Recurse -Force
+          $manifest = Get-Content (Join-Path $target "runtime-manifest.json") -Raw | ConvertFrom-Json
+          if ($manifest.application_only -ne $true -or $manifest.python_required -ne "external") { throw "Downloaded runtime is not an application-only pack" }
+          if (-not (Test-Path (Join-Path $target "requirements-bootstrap.txt") -PathType Leaf)) { throw "Bootstrap dependency guidance is missing" }
+          if (-not (Test-Path (Join-Path $target "requirements-models.txt") -PathType Leaf)) { throw "Model dependency guidance is missing" }
 
       - name: Install desktop npm deps
         working-directory: apps/desktop
@@ -288,9 +285,10 @@ jobs:
               "---\n\n"
               "**Models are external.** SAM3 / RMBG checkpoints are not included; "
               "download and import them on the target machine after installation.\n"
-              "**Target-machine dependency installation boundary:** the Runtime Pack ships FigureSmith "
-              "application code and install scripts. The target machine must provide "
-              "and install compatible Python, CUDA/PyTorch, and SAM3/RMBG dependencies.\n"
+              "**User-managed Python environment (isolated):** the Runtime Pack and desktop installer include application code and dependency guidance, not Python itself. "
+              "The target machine must provide Python 3.10-3.12 as a base; FigureSmith creates `%LOCALAPPDATA%\\FigureSmith\\python-env` and installs bootstrap packages there without modifying the base. "
+              "Torch/torchvision/CUDA/SAM3 remain optional model dependencies; the app does not install them automatically. "
+              "A supported NVIDIA driver, WebView2, and Visual C++ runtime are still required.\n"
               "Source license ≠ third-party model weight licenses.\n"
           )
           Path("release-notes.md").write_text(notes, encoding="utf-8")

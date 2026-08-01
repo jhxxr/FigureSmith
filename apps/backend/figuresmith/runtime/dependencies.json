@@ -1,0 +1,124 @@
+{
+  "schema": 1,
+  "product": "FigureSmith",
+  "python": {
+    "min_version": "3.10",
+    "max_version_exclusive": "3.13"
+  },
+  "packages": [
+    {
+      "distribution": "fastapi",
+      "import": "fastapi",
+      "scope": "bootstrap",
+      "requirement": "fastapi>=0.110,<1.0"
+    },
+    {
+      "distribution": "uvicorn",
+      "import": "uvicorn",
+      "scope": "bootstrap",
+      "requirement": "uvicorn[standard]>=0.24,<1.0"
+    },
+    {
+      "distribution": "pydantic",
+      "import": "pydantic",
+      "scope": "bootstrap",
+      "requirement": "pydantic>=2.6,<3.0"
+    },
+    {
+      "distribution": "python-multipart",
+      "import": "multipart",
+      "scope": "bootstrap",
+      "requirement": "python-multipart>=0.0.9,<1.0"
+    },
+    {
+      "distribution": "requests",
+      "import": "requests",
+      "scope": "generation",
+      "requirement": "requests>=2.31,<3.0"
+    },
+    {
+      "distribution": "openai",
+      "import": "openai",
+      "scope": "generation",
+      "requirement": "openai>=1.0,<2.0"
+    },
+    {
+      "distribution": "google-genai",
+      "import": "google.genai",
+      "scope": "generation",
+      "requirement": "google-genai>=1.0,<2.0"
+    },
+    {
+      "distribution": "numpy",
+      "import": "numpy",
+      "scope": "models",
+      "requirement": "numpy>=1.26,<3.0"
+    },
+    {
+      "distribution": "Pillow",
+      "import": "PIL",
+      "scope": "models",
+      "requirement": "Pillow>=10.0,<12.0"
+    },
+    {
+      "distribution": "torch",
+      "import": "torch",
+      "scope": "models",
+      "requirement": "torch>=2.1"
+    },
+    {
+      "distribution": "torchvision",
+      "import": "torchvision",
+      "scope": "models",
+      "requirement": "torchvision>=0.16"
+    },
+    {
+      "distribution": "timm",
+      "import": "timm",
+      "scope": "models",
+      "requirement": "timm>=0.9"
+    },
+    {
+      "distribution": "transformers",
+      "import": "transformers",
+      "scope": "models",
+      "requirement": "transformers>=4.39,<5.0"
+    },
+    {
+      "distribution": "kornia",
+      "import": "kornia",
+      "scope": "models",
+      "requirement": "kornia>=0.7,<1.0"
+    },
+    {
+      "distribution": "sam3",
+      "import": "sam3",
+      "scope": "models",
+      "requirement": "sam3"
+    },
+    {
+      "distribution": "lxml",
+      "import": "lxml",
+      "scope": "svg",
+      "requirement": "lxml>=4.9"
+    },
+    {
+      "distribution": "cairosvg",
+      "import": "cairosvg",
+      "scope": "svg",
+      "requirement": "cairosvg>=2.7"
+    },
+    {
+      "distribution": "svglib",
+      "import": "svglib",
+      "scope": "svg",
+      "requirement": "svglib>=1.5"
+    },
+    {
+      "distribution": "reportlab",
+      "import": "reportlab",
+      "scope": "svg",
+      "requirement": "reportlab>=4.0"
+    }
+  ]
+}

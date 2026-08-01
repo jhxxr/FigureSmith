@@ -9,7 +9,8 @@
 
 param(
     [switch]$SkipBuild,
-    [string]$Version = ""
+    [string]$Version = "",
+    [string]$RuntimeRoot = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -37,6 +38,49 @@ Write-Host "Version: $Version"
 $Desktop = Join-Path $RepoRoot "apps\desktop"
 $TauriTarget = Join-Path $Desktop "src-tauri\target\release"
 $BundleDir = Join-Path $TauriTarget "bundle"
+$RuntimeRoot = if ([string]::IsNullOrWhiteSpace($RuntimeRoot)) {
+    Join-Path $Desktop "src-tauri\runtime"
+} else {
+    (Resolve-Path $RuntimeRoot).Path
+}
+
+function Assert-ApplicationRuntime([string]$Root) {
+    if (-not (Test-Path $Root -PathType Container)) {
+        throw "Application runtime directory is missing: $Root"
+    }
+    $manifestPath = Join-Path $Root "runtime-manifest.json"
+    if (-not (Test-Path $manifestPath -PathType Leaf)) {
+        throw "Application runtime manifest is missing: $manifestPath"
+    }
+    $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+    if ($manifest.product -ne "FigureSmith" -or $manifest.application_only -ne $true) {
+        throw "Desktop packaging requires application_only=true for FigureSmith"
+    }
+    if ($manifest.python_required -ne "external" -or $manifest.runtime_complete -ne $false) {
+        throw "Desktop packaging must declare user-managed Python"
+    }
+    foreach ($relative in @(
+        "app\backend\main.py",
+        "app\vendor\autofigure_edit\server.py",
+        "app\backend\figuresmith\runtime\dependencies.json",
+        "requirements-runtime.txt",
+        "requirements-bootstrap.txt",
+        "requirements-models.txt"
+    )) {
+        $path = Join-Path $Root $relative
+        if (-not (Test-Path $path -PathType Leaf)) { throw "Application runtime file is missing: $path" }
+    }
+    $embedded = Get-ChildItem -LiteralPath $Root -Recurse -File | Where-Object {
+        $_.Name -ieq "python.exe" -or $_.Name -like "python*.dll" -or $_.Extension -ieq ".whl"
+    }
+    if ($embedded) { throw "Application runtime contains Python or dependency artifacts: $($embedded.FullName -join ', ')" }
+}
+Write-Host "Using application pack with user-managed Python: $RuntimeRoot" -ForegroundColor DarkGreen
+$TauriSourceRuntime = Join-Path $Desktop "src-tauri\runtime"
+if ((Resolve-Path $RuntimeRoot).Path -ne ([System.IO.Path]::GetFullPath($TauriSourceRuntime))) {
+    if (Test-Path $TauriSourceRuntime) { Remove-Item $TauriSourceRuntime -Recurse -Force }
+    Copy-Item $RuntimeRoot $TauriSourceRuntime -Recurse -Force
+}
 
 if (-not $SkipBuild) {
     $Node = Get-Command node -ErrorAction SilentlyContinue
@@ -63,6 +107,15 @@ if (-not $SkipBuild) {
 } else {
     Write-Host "SkipBuild: reusing existing Tauri target if present" -ForegroundColor Yellow
 }
+
+# Tauri copies bundle.resources into target/release/resources. Keep this check
+# fail-closed: an installer without the application pack would only fail after launch.
+$TauriResources = Join-Path $TauriTarget "resources"
+$TauriRuntime = Join-Path $TauriResources "runtime"
+if (Test-Path $TauriRuntime) { Remove-Item $TauriRuntime -Recurse -Force }
+New-Item -ItemType Directory -Path $TauriResources -Force | Out-Null
+Copy-Item $RuntimeRoot $TauriRuntime -Recurse -Force
+Assert-ApplicationRuntime $TauriRuntime
 
 # Collect bundle artifacts
 $copied = @()
@@ -120,19 +173,20 @@ foreach ($f in @("LICENSE", "NOTICE.md", "THIRD_PARTY_NOTICES.md", "README.md", 
 Copy-Item $releaseExe (Join-Path $portableDir "FigureSmith.exe") -Force
 Write-Host "Included FigureSmith.exe in portable pack"
 
-# Helper scripts
-$pScripts = Join-Path $portableDir "scripts"
-New-Item -ItemType Directory -Path $pScripts | Out-Null
-Copy-Item (Join-Path $RepoRoot "scripts\run-backend.ps1") $pScripts -Force -ErrorAction SilentlyContinue
-Copy-Item (Join-Path $RepoRoot "scripts\run-desktop.ps1") $pScripts -Force -ErrorAction SilentlyContinue
-Copy-Item (Join-Path $RepoRoot "scripts\setup-dev.ps1") $pScripts -Force -ErrorAction SilentlyContinue
+# The packaged Tauri resource directory contains application code and the
+# dependency contract. The executable creates/uses a separate user environment
+# from a supported base Python; it never writes packages into that base.
+Copy-Item $TauriResources (Join-Path $portableDir "resources") -Recurse -Force
+Assert-ApplicationRuntime (Join-Path $portableDir "resources\runtime")
 
 @"
 # FigureSmith Portable
 
 - Product: FigureSmith / 图匠
 - Version: $Version
-- Model weights are **not** included. Import SAM3/RMBG after install.
+- The target machine supplies a supported Python 3.10-3.12 base. FigureSmith creates its isolated environment under `%LOCALAPPDATA%\FigureSmith\python-env` and installs bootstrap packages there without modifying the base Python.
+- Model packages remain optional; the welcome page reports their status and provides a command for the isolated environment.
+- Import SAM3/RMBG model weights in the app.
 - Backend must bind 127.0.0.1 only (desktop sidecar enforces this).
 
 See docs in the full repository: docs/phase6-delivery.md, docs/release.md

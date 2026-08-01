@@ -18,13 +18,15 @@ The Tauri process:
 | **Rust** | `rustup` + `cargo` (MSVC toolchain on Windows) |
 | **Node.js** | 20+ with `npm` |
 | **WebView2** | Preinstalled on modern Windows 11; bootstrapper used if missing |
-| **Python** | Project venv via `./scripts/setup-dev.ps1` |
+| **Python base** | User-installed Python 3.10-3.12; desktop scans available installations and uses one only to create the isolated FigureSmith environment |
+| **Managed environment** | `%LOCALAPPDATA%\FigureSmith\python-env` by default; bootstrap packages are installed here, never into the base Python |
 
 Optional env:
 
 | Variable | Purpose |
 |----------|---------|
-| `FIGURESMITH_PYTHON` | Absolute path to Python interpreter for the sidecar |
+| `FIGURESMITH_PYTHON` | Optional absolute path to the base Python used to create the isolated environment |
+| `FIGURESMITH_MANAGED_PYTHON_DIR` | Optional isolated environment directory; defaults to `%LOCALAPPDATA%\FigureSmith\python-env` |
 | `FIGURESMITH_REPO_ROOT` | Override monorepo root detection |
 | `FIGURESMITH_DATA_DIR` | Explicit app data root (forwarded to sidecar; must be writable) |
 | `FIGURESMITH_DEV_MODE` | Explicit source-development mode; repository data is never inferred in release mode |
@@ -52,12 +54,13 @@ npm run tauri -- dev
 # or: npm run tauri -- build
 ```
 
-Release packaging / runtime pack polish is **Phase 6**. Model weights are **never** bundled.
+Release packaging includes application code and dependency guidance only. It does not bundle Python, pip, PyTorch, CUDA, SAM3, or model weights. On first launch the desktop selects a supported user-installed Python as a base, creates a dedicated environment under LocalAppData, and installs only the bootstrap service packages there. Model packages remain optional and are reported in the welcome page.
 
 ## Tauri commands
 
 | Command | Role |
 |---------|------|
+| `prepare_managed_python_environment` | One-click creation/repair of the isolated user environment, then restart |
 | `import_sam3_model` | Native file picker → `POST /api/models/sam3/import` |
 | `import_rmbg_archive` | ZIP picker → RMBG import |
 | `import_rmbg_folder` | Folder picker → RMBG import |
@@ -79,6 +82,8 @@ Placeholder solid-color icons under `src-tauri/icons/` (not the upstream AutoFig
 
 ## Troubleshooting
 
-- **Sidecar health timeout**: ensure `./scripts/setup-dev.ps1` succeeded and `python apps/backend/main.py` works alone.
+- **Sidecar startup failure**: use the splash action to create/repair the isolated environment. It uses a supported base Python but does not install into that base.
+- **Model environment incomplete**: the editor can still open; install the reported Torch/torchvision/SAM3 packages into the isolated environment before running local inference.
+- **Sidecar health timeout**: ensure a supported base Python is installed and the bootstrap requirements can be reached by the isolated environment setup.
 - **Auth 401 in browser-only mode**: browser dev should use `./scripts/run-backend.ps1` without a session token, or set `FIGURESMITH_DISABLE_AUTH=1` (tests only).
 - **Orphan Python after crash**: startup and exit paths own a cleanup guard and use `taskkill /T` as a final fallback.

@@ -1,10 +1,13 @@
 //! Tauri commands: session bridge + model import via native dialogs + HTTP.
 
-use crate::sidecar::SidecarState;
+use crate::sidecar::{
+    prepare_managed_python_environment as prepare_managed_python, resolve_runtime_root,
+    SidecarState,
+};
 use serde_json::Value;
 use std::path::PathBuf;
 use std::time::Duration;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
@@ -63,6 +66,18 @@ async fn pick_folder(app: &AppHandle) -> Result<Option<PathBuf>, String> {
         .map(|p| p.into_path())
         .transpose()
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn prepare_managed_python_environment(app: AppHandle) -> Result<String, String> {
+    let resource_dir = app.path().resource_dir().ok();
+    let runtime_root = resolve_runtime_root(resource_dir)?;
+    let python = prepare_managed_python(&runtime_root)?;
+
+    // The sidecar may have failed before it could be managed. Restarting after
+    // setup lets the normal startup path use the newly created environment.
+    app.request_restart();
+    Ok(python.to_string_lossy().into_owned())
 }
 
 #[tauri::command]

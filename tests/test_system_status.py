@@ -41,6 +41,12 @@ def test_build_system_status_shape(tmp_path: Path) -> None:
     assert "rmbg_loaded" in status
     assert "models" in status
     assert "onboarding_completed" in status
+    assert "dependencies" in status
+    assert "python_executable" in status
+    assert "missing_bootstrap" in status["dependencies"]
+    assert "missing_models" in status["dependencies"]
+    assert "managed_environment" in status["dependencies"]
+    assert "managed_environment_root" in status["dependencies"]
     assert "gpu_missing_zh" in status["messages"]
     assert "gpu_missing_en" in status["messages"]
     assert "NVIDIA" in status["messages"]["gpu_missing_zh"] or "CUDA" in status["messages"]["gpu_missing_zh"]
@@ -54,6 +60,8 @@ def test_system_status_endpoint(client) -> None:
     assert body["product"] == "FigureSmith"
     assert isinstance(body["gpu_available"], bool)
     assert "messages" in body
+    assert "dependencies" in body
+    assert "install_command" in body["dependencies"]
 
 
 def test_onboarding_persist(client) -> None:

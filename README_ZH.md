@@ -14,10 +14,12 @@
 
 阶段六在桌面 UX 基础上提供 **Windows 打包工具**：
 
-- `./scripts/build-runtime.ps1`：不含模型权重的 Runtime Pack
+- `./scripts/build-runtime.ps1`：仅包含应用源码、依赖清单与完整性清单的 Windows Runtime Pack；不包含 Python、CUDA、依赖 wheel 或模型权重
 - `./scripts/build-desktop.ps1`：生成 Setup/Portable 到 `dist-desktop/`
 - `./scripts/write-checksums.ps1`：生成 SHA-256 `checksums.txt`
 - 发布清单：[`docs/phase6-delivery.md`](./docs/phase6-delivery.md)、[`docs/release.md`](./docs/release.md)
+
+桌面端会扫描本机可用的 Python 3.10-3.12 环境，只把其中一个作为基座，在用户 LocalAppData 下创建 FigureSmith 独立环境；服务 bootstrap 包只安装到这个独立环境，不会修改原 Python。PyTorch、CUDA、SAM3 和模型权重不会自动安装。
 
 桌面端使用 **Tauri 2 + 本地 Python Sidecar**，并在阶段三模型管理之上提供：
 
@@ -27,7 +29,7 @@
 - 退出时 `POST /api/shutdown`，超时则清理进程树
 - 浏览器模式仍可用 `./scripts/run-backend.ps1`（无 Token）
 
-**不随仓库或发布包提供：** SAM3/RMBG 等模型权重。Runtime Pack 是代码与依赖安装脚本包，目标机器需准备兼容的 Python/CUDA/PyTorch/SAM3 依赖；用户自行申请、下载模型后，在软件中导入即可。
+**不随仓库或发布包提供：** Python 运行时、依赖 wheel、SAM3/RMBG 等模型权重。首次启动会在用户目录创建独立环境，并把 `requirements-bootstrap.txt` 安装到那里；需要本地推理时，再使用页面显示的独立 Python 命令安装 `requirements-models.txt`，然后自行准备并导入模型文件。
 
 ### 本地模型环境变量
 
@@ -42,6 +44,8 @@
 | `FIGURESMITH_ALLOW_UNPINNED_MODELS` | 开发：允许与官方 pin 不匹配的导入 |
 | `FIGURESMITH_SESSION_TOKEN` | 桌面 Sidecar 会话令牌（由 Tauri 注入，勿提交） |
 | `FIGURESMITH_DISABLE_AUTH` | 测试旁路鉴权（`1` 关闭） |
+| `FIGURESMITH_PYTHON` | 可选的 Python 基座路径；桌面端会从它创建独立环境，不会修改它 |
+| `FIGURESMITH_MANAGED_PYTHON_DIR` | 可选的独立环境目录；默认是 `%LOCALAPPDATA%\FigureSmith\python-env` |
 
 详见 [docs/phase4-delivery.md](./docs/phase4-delivery.md)、[docs/phase3-delivery.md](./docs/phase3-delivery.md)。
 
@@ -67,7 +71,7 @@ FigureSmith 基于 AutoFigure-Edit（MIT，Copyright 2026 Autofigure2 contributo
 ## 快速开始（Windows 开发）
 
 ```powershell
-# 1) 创建 venv 并安装 backend 依赖
+# 1) 创建 venv 并安装 FigureSmith 服务包
 ./scripts/setup-dev.ps1
 
 # 2) 可选：配置 OpenAI 兼容接口密钥

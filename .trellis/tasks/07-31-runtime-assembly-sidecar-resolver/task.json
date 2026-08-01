@@ -1,8 +1,8 @@
 {
   "id": "runtime-assembly-sidecar-resolver",
   "name": "runtime-assembly-sidecar-resolver",
-  "title": "Runtime assembly and sidecar resolver",
-  "description": "Assemble the complete Runtime Directory offline and make release mode resolve it without system or repository fallbacks.",
+  "title": "Application pack and user-environment sidecar resolver",
+  "description": "Assemble the application-only Windows pack, create a per-user isolated Python environment from a supported base, and run the sidecar without packaging CPython, PyTorch, CUDA, or model weights.",
   "status": "in_progress",
   "dev_type": null,
   "scope": null,
@@ -21,6 +21,6 @@
   "children": [],
   "parent": "07-31-safe-beta-windows-runtime",
   "relatedFiles": [],
-  "notes": "",
+  "notes": "Scope revised: the desktop uses a supported user-installed Python only as a base, creates %LOCALAPPDATA%/FigureSmith/python-env, installs bootstrap packages there without modifying the base, and keeps model diagnostics separate from editor readiness.",
   "meta": {}
 }

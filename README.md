@@ -10,17 +10,20 @@ Local-first scientific figure generation, segmentation, vectorization, and SVG e
 
 Phase 6 adds **Windows packaging tooling** on top of the Phase 5 desktop UX:
 
-- `./scripts/build-runtime.ps1` — Runtime Pack **without model weights**
+- `./scripts/build-runtime.ps1` — application-only Windows Runtime Pack (no Python, CUDA, dependency wheels, or model weights)
 - `./scripts/build-desktop.ps1` — Setup/Portable outputs under `dist-desktop/`
 - `./scripts/write-checksums.ps1` — SHA-256 `checksums.txt`
 - Release docs: [docs/phase6-delivery.md](./docs/phase6-delivery.md), [docs/release.md](./docs/release.md)
 
+The desktop shell scans available Python 3.10-3.12 installations, uses one only as a base, and creates a dedicated FigureSmith environment under the user's LocalAppData. Bootstrap packages are installed only into that isolated environment; PyTorch, CUDA, SAM3, and model weights are never installed automatically.
+
 Also includes welcome/models UX, local-only SAM UI, Tauri sidecar on **127.0.0.1**, and session token auth.
 
-**Not shipped in git/releases:** model weights (`sam3.pt`, RMBG safetensors, etc.).
-The Runtime Pack is a dependency-install code pack; prepare compatible Python/
-CUDA/PyTorch/SAM3 dependencies on the target machine, then download and import
-model files there through the application.
+**Not shipped in git/releases:** Python runtimes, dependency wheels, model weights
+(`sam3.pt`, RMBG safetensors, etc.). The first desktop launch creates a per-user
+isolated environment and installs `requirements-bootstrap.txt` there. Use the
+reported isolated-Python command with `requirements-models.txt` only when local
+inference is needed.
 
 ### Local model environment variables
 
@@ -35,8 +38,8 @@ model files there through the application.
 | `FIGURESMITH_ALLOW_UNPINNED_MODELS` | Dev: allow imports that do not match official pins |
 | `FIGURESMITH_SESSION_TOKEN` | Desktop sidecar Bearer token (set by Tauri; do not commit) |
 | `FIGURESMITH_DISABLE_AUTH` | Test/dev bypass for auth middleware (`1` = off) |
-| `FIGURESMITH_PYTHON` | Optional Python interpreter for the desktop sidecar |
-
+| `FIGURESMITH_PYTHON` | Optional explicit base Python executable; the desktop creates its isolated environment from it without modifying it |
+| `FIGURESMITH_MANAGED_PYTHON_DIR` | Optional override for the isolated environment directory; default is `%LOCALAPPDATA%\FigureSmith\python-env` |
 See [docs/development.md](./docs/development.md).
 
 ## Relationship to AutoFigure-Edit
@@ -61,7 +64,7 @@ This repository does **not** include SAM3/RMBG (or other) model weights. Review 
 ## Quick start (Windows development)
 
 ```powershell
-# 1) Setup venv + backend deps
+# 1) Setup venv + FigureSmith service packages
 ./scripts/setup-dev.ps1
 
 # 2) Optional: configure OpenAI-compatible keys

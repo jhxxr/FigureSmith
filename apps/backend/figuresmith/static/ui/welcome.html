@@ -11,6 +11,7 @@
     <script src="/fs/common.js"></script>
   </head>
   <body>
+    <a class="fs-skip-link" href="#mainContent">Skip to main content</a>
     <div class="fs-page">
       <header class="fs-topbar">
         <div class="fs-brand">
@@ -23,35 +24,60 @@
         <nav class="fs-nav" data-fs-nav></nav>
       </header>
 
-      <section class="fs-card fs-hero">
-        <h1 data-i18n="title">Welcome to FigureSmith</h1>
-        <p data-i18n="subtitle">
-          First-run setup checks your environment, imports local SAM3 / RMBG weights, and optionally
-          configures an OpenAI-compatible generation provider. You can skip any step.
-        </p>
-        <div class="fs-progress" aria-hidden="true"><span id="wizardProgress"></span></div>
-        <div class="fs-btn-row">
-          <button type="button" class="fs-btn primary" id="btnStart" data-i18n="start">Start setup</button>
-          <button type="button" class="fs-btn" id="btnSkip" data-i18n="skip">Skip for now</button>
-          <a class="fs-btn" href="/" data-i18n="goto_create">Go to Create</a>
-        </div>
-      </section>
+      <main id="mainContent">
+        <section class="fs-card fs-hero" aria-labelledby="welcomeTitle">
+          <div class="fs-hero-copy">
+            <p class="fs-eyebrow" data-i18n="eyebrow">A local figure workspace</p>
+            <h1 id="welcomeTitle" data-i18n="title">Welcome to FigureSmith</h1>
+            <p data-i18n="subtitle">
+              Bring your local model files, check the runtime, then start making figures. Everything stays on this machine.
+            </p>
+            <div class="fs-btn-row">
+              <button type="button" class="fs-btn primary" id="btnStart" data-i18n="start">Check readiness</button>
+              <a class="fs-btn" href="/" data-i18n="goto_create">Go to Create</a>
+              <button type="button" class="fs-btn quiet" id="btnSkip" data-i18n="skip">Do this later</button>
+            </div>
+            <p class="fs-inline-status" id="setupHint" aria-live="polite" data-i18n="loading">Checking your workspace…</p>
+          </div>
+          <aside class="fs-hero-status" aria-labelledby="setupStatusTitle">
+            <div class="fs-card-header">
+              <div>
+                <p class="fs-eyebrow" data-i18n="status_eyebrow">Workspace status</p>
+                <h2 id="setupStatusTitle" data-i18n="status_title">Ready when you are</h2>
+              </div>
+              <span class="fs-badge" id="setupBadge" data-i18n="status_checking">Checking</span>
+            </div>
+            <div class="fs-status-grid" id="setupSummary" aria-live="polite">
+              <div class="fs-status-card fs-loading" data-i18n="loading">Loading status…</div>
+            </div>
+          </aside>
+        </section>
 
-      <section class="fs-card" id="wizardPanel" hidden>
-        <h2 id="stepTitle">Environment check</h2>
-        <p id="stepCopy" class="fs-muted"></p>
-        <div class="fs-steps" id="stepList"></div>
-        <div id="stepBody"></div>
-        <div id="stepAlert" class="fs-alert" hidden></div>
-        <div class="fs-btn-row">
-          <button type="button" class="fs-btn" id="btnBack" data-i18n="back">Back</button>
-          <button type="button" class="fs-btn" id="btnSkipStep" data-i18n="skip_step">Skip step</button>
-          <button type="button" class="fs-btn primary" id="btnNext" data-i18n="next">Next</button>
-        </div>
-      </section>
+        <section class="fs-card fs-wizard" id="wizardPanel" aria-labelledby="stepTitle" hidden>
+          <div class="fs-card-header">
+            <div>
+              <p class="fs-eyebrow" data-i18n="setup_eyebrow">First-run setup</p>
+              <h2 id="stepTitle" tabindex="-1">Environment check</h2>
+              <p id="stepCopy" class="fs-muted"></p>
+            </div>
+            <span class="fs-badge" id="stepCounter" aria-live="polite"></span>
+          </div>
+          <div class="fs-progress" role="progressbar" aria-label="Setup progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <span id="wizardProgress"></span>
+          </div>
+          <div class="fs-steps" id="stepList" role="list"></div>
+          <div id="stepBody"></div>
+          <div id="stepAlert" class="fs-alert" role="status" aria-live="polite" hidden></div>
+          <div class="fs-btn-row fs-wizard-actions">
+            <button type="button" class="fs-btn" id="btnBack" data-i18n="back">Back</button>
+            <button type="button" class="fs-btn quiet" id="btnSkipStep" data-i18n="skip_step">Skip step</button>
+            <button type="button" class="fs-btn primary" id="btnNext" data-i18n="next">Next</button>
+          </div>
+        </section>
+      </main>
 
       <p class="fs-footer-note">
-        FigureSmith is independent open-source software based on AutoFigure-Edit. Not affiliated with ResearAI.
+        <span data-i18n="footer">FigureSmith is independent open-source software based on AutoFigure-Edit.</span>
       </p>
     </div>
     <script src="/fs/welcome.js"></script>

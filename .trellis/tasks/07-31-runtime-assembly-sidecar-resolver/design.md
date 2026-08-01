@@ -1,43 +1,44 @@
-# Runtime Assembly and Sidecar Resolver Design
+# Application Pack and Sidecar Resolver Design
 
-## Assembly pipeline
+## Pack boundary
 
-The acquisition command populates a content-addressed verified cache. The
-assembly command accepts only the committed locks plus this cache, creates a new
-stage, installs with hash/no-index enforcement, copies application/legal inputs
-through a structured packager, and runs smoke before manifest generation.
+`build-runtime.ps1` copies only application/vendor/resource/legal files,
+requirements guidance, and dependency metadata. The Python manifest module and
+Rust verifier share the same application-only contract: required entry points,
+external Python declaration, no weights/caches, and a complete hash inventory.
+The build machine may use Python to calculate the manifest; no target-machine
+Python or dependency is copied into the artifact.
 
-The packager derives output from explicit roots and structured path rules. Its
-generated file inventory is the source for independent weight/cache detection;
-unexpected files fail. Runtime timestamps/metadata are normalized where needed
-for deterministic manifests.
+## Environment selection
 
-## Python isolation
+The Rust sidecar resolver scans explicit `FIGURESMITH_PYTHON`, project virtual
+environments, Windows `py -0p`, PATH commands, and known conda/virtualenv
+roots. A supported Python 3.10-3.12 is used only as a base; the resolver creates
+`%LOCALAPPDATA%\FigureSmith\python-env` and installs `requirements-bootstrap.txt`
+into that isolated environment. The base interpreter is never pip's target.
+`FIGURESMITH_MANAGED_PYTHON_DIR` can override the isolated location.
 
-`python312._pth` contains only controlled runtime entries. Environment variables
-that alter Python home/path/user-site are removed before spawn. The runtime
-probe asserts imports resolve beneath the staged runtime and that a canary
-package on PATH/current directory is ignored.
+The child always receives the managed interpreter, application `PYTHONPATH`,
+loopback settings, strict-offline flags, and the managed environment path.
+Inherited source-path hooks are removed. Model requirements are installed only
+when the user explicitly copies the command shown by the welcome page.
 
-## Rust resolver
+## Model environment
 
-A resolver trait returns validated Python, backend entry, runtime root, and
-manifest identity. Development and release implementations are chosen by build
-mode/configuration, not by guessing whether repo files exist.
+The dependency contract labels Torch, torchvision, timm, transformers, kornia,
+SAM3, and related packages as model scope. The backend reports those packages
+without importing them in the main process. GPU probing runs in a disposable
+child process because an ABI-incompatible Torch installation can terminate the
+interpreter at native load time. Missing model packages do not block the
+application after bootstrap readiness.
 
-The release implementation resolves Resource base paths, parses the manifest,
-checks schema/product/runtime identity and critical files before spawn, and can
-run full hash verification in self-test/build validation. Startup failures are
-typed and redacted for the local splash.
+## UI flow
 
-## Integration
-
-The completed sidecar state machine consumes the resolved command/working root.
-The completed data contract supplies a separate writable root. Runtime itself
-is never selected as current mutable data.
-
-## Rollback
-
-The old source resolver remains only inside explicit development mode. Release
-cannot use it as a fallback. Assembly staging is disposable until independent
-verification passes.
+The splash reports resolver failure and offers one-click isolated-environment
+creation/repair followed by an app restart. The welcome page loads status once,
+shows the managed environment path and summary cards, and provides a wizard
+with environment, SAM3 import, RMBG import, provider, and completion steps.
+Model cards show their local path and verification state; import operations show
+an indeterminate progress bar until the backend verifies the files. Refresh and
+import actions update the same status source; no duplicate polling or stale
+model state is retained.

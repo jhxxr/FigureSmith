@@ -22,10 +22,12 @@
   runtime manifest; product/version match `FigureSmith` and `VERSION`
 - [ ] No `*.pt` / `*.safetensors` under `dist-runtime` or `dist-desktop`
 - [ ] `checksums.txt` present and hashes match
-- [ ] Runtime Pack is the dependency-install code pack: the target machine
-  installs compatible Python/CUDA/PyTorch/SAM3 dependencies before use
-- [ ] SAM3/RMBG model weights remain external; users download and import them
-  on the target machine after installing the Runtime Pack
+- [ ] Runtime manifest declares `application_only: true`, `python_required: external`, and no weights/cache/dependency artifacts
+- [ ] The application pack contains `requirements-runtime.txt`, `requirements-bootstrap.txt`, `requirements-models.txt`, and the dependency contract; it does not contain `python.exe`, Python DLLs, wheels, PyTorch, CUDA, SAM3 source, model weights, or user data
+- [ ] Release notes tell users to provide Python 3.10-3.12 as a base; FigureSmith creates `%LOCALAPPDATA%\FigureSmith\python-env` and installs bootstrap packages there without changing the base environment
+- [ ] Desktop resolver scans multiple Python installations, creates/repairs the isolated environment, reports missing model packages, and continues to the UI when only model packages are missing
+- [ ] The target machine has a supported NVIDIA driver, WebView2, and Visual C++
+  runtime; these OS prerequisites are not bundled by FigureSmith
 - [ ] Portable archive contains a real `FigureSmith.exe`; missing binaries fail
   the build and never produce a placeholder archive
 - [ ] Portable/README states models must be imported by the user
@@ -35,7 +37,7 @@
 
 - `FigureSmith-Setup-x64-*.exe` / `.msi`
 - `FigureSmith-Portable-x64-*.zip`
-- `FigureSmith-Runtime-Windows-NVIDIA-*.zip`
+- `FigureSmith-Runtime-Windows-*.zip` (application code + dependency guidance only)
 - `checksums.txt`
 - Release notes (from CHANGELOG)
 

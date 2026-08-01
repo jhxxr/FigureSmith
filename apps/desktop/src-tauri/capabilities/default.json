@@ -4,6 +4,7 @@
   "description": "Default capabilities for FigureSmith desktop",
   "windows": ["splash"],
   "permissions": [
-    "core:default"
+    "core:default",
+    "allow-prepare-managed-python-environment"
   ]
 }

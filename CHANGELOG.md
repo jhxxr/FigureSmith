@@ -2,6 +2,16 @@
 
 All notable changes to FigureSmith are documented in this file.
 
+## [0.6.2] — 2026-08-01
+
+### User-managed Windows runtime
+
+- Change the Windows Runtime Pack to application code, dependency guidance, and integrity metadata only; do not package CPython, PyTorch, CUDA wheels, SAM3 source, or model weights.
+- Scan supported user-installed Python 3.10-3.12 bases, create a per-user isolated FigureSmith environment without changing them, and show a one-click repair action on the splash.
+- Separate model-environment diagnostics from service startup so the editor can open before Torch/torchvision/SAM3 and GPU setup is complete.
+- Keep SAM3/RMBG model weights external; users import their own approved files from the application Models page.
+- Refresh the first-run and model-management UI around runtime readiness and model import.
+
 ## [0.6.1] — 2026-07-28
 
 ### Data directory default (install-local)

@@ -37,15 +37,14 @@ if (-not (Test-Path $VenvPython)) {
 Write-Host "Upgrading pip ..."
 & $VenvPython -m pip install --upgrade pip
 
-$Req = Join-Path $RepoRoot "apps\backend\requirements.txt"
-Write-Host "Installing backend requirements from $Req ..."
-Write-Host "Note: torch/CUDA wheels vary by machine; this may take a while."
+$Req = Join-Path $RepoRoot "scripts\runtime\requirements-bootstrap.txt"
+Write-Host "Installing FigureSmith service requirements from $Req ..."
 & $VenvPython -m pip install -r $Req
 
 Write-Host ""
-Write-Host "SAM3 is NOT installed by this script (separate optional install)." -ForegroundColor Yellow
-Write-Host "  git clone https://github.com/facebookresearch/sam3.git"
-Write-Host "  cd sam3; pip install -e ."
+Write-Host "Model packages are optional for the editor and are not installed by default." -ForegroundColor Yellow
+Write-Host "For local inference, select a CUDA-compatible torch/torchvision pair and run:"
+Write-Host "  $VenvPython -m pip install -r scripts\runtime\requirements-models.txt"
 Write-Host ""
 Write-Host "Setup complete." -ForegroundColor Green
 Write-Host "Next:"

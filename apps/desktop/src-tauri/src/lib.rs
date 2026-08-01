@@ -5,7 +5,7 @@ mod sidecar;
 
 use commands::{
     build_initialization_script, import_rmbg_archive, import_rmbg_folder, import_sam3_model,
-    open_models_directory,
+    open_models_directory, prepare_managed_python_environment,
 };
 use sidecar::{resolve_runtime_root, SidecarState};
 use tauri::{
@@ -25,6 +25,7 @@ pub fn run() {
             import_rmbg_archive,
             import_rmbg_folder,
             open_models_directory,
+            prepare_managed_python_environment,
         ])
         .setup(|app| {
             // Build menu: Models import actions (MVP without redesigning vendor UI).

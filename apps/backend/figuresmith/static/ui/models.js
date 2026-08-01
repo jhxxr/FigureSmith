@@ -23,6 +23,8 @@
       installed: "Installed",
       missing: "Not installed",
       desktop_import: "Import (desktop)",
+      importing: "Importing and verifying model files...",
+      import_complete: "Import and verification complete",
       desktop_only: "Use the FigureSmith desktop app to pick files, or the path import below.",
       confirmed_delete: "Delete this model pack?",
       gpu_missing_title: "GPU notice",
@@ -46,6 +48,8 @@
       installed: "已安装",
       missing: "未安装",
       desktop_import: "导入（桌面）",
+      importing: "正在导入并校验模型文件...",
+      import_complete: "导入并校验完成",
       desktop_only: "请使用 FigureSmith 桌面端选择文件，或使用下方路径导入。",
       confirmed_delete: "确认删除该模型包？",
       gpu_missing_title: "GPU 提示",
@@ -146,6 +150,8 @@
       '<div class="fs-path-box fs-mono">' +
       (path || "—") +
       "</div></div>";
+    html +=
+      '<div class="fs-model-transfer" data-transfer hidden><span class="fs-model-transfer-bar"></span><span data-transfer-label></span></div>';
     html += '<div class="fs-btn-row">';
     if (FS.isDesktop()) {
       html +=
@@ -176,10 +182,19 @@
   }
 
   async function handleAction(kind, act, btn) {
+    var card = btn && btn.closest ? btn.closest(".fs-model-card") : null;
+    var transfer = card && card.querySelector("[data-transfer]");
+    var transferLabel = transfer && transfer.querySelector("[data-transfer-label]");
     try {
       if (btn) btn.disabled = true;
       showMsg("", null);
       if (act === "desktop-import") {
+        if (transfer) {
+          transfer.hidden = false;
+          transfer.classList.remove("is-complete", "is-error");
+        }
+        if (transferLabel) transferLabel.textContent = t("importing");
+        showMsg(t("importing"), "warn");
         if (kind === "sam3") {
           await FS.tauriInvoke("import_sam3_model", {});
         } else {
@@ -190,7 +205,9 @@
             await FS.tauriInvoke("import_rmbg_folder", {});
           }
         }
-        showMsg("Import OK", "ok");
+        if (transfer) transfer.classList.add("is-complete");
+        if (transferLabel) transferLabel.textContent = t("import_complete");
+        showMsg(t("import_complete"), "ok");
       } else if (act === "verify") {
         var vpath = kind === "sam3" ? "/api/models/sam3/verify" : "/api/models/rmbg/verify";
         await FS.api(vpath, { method: "POST" });
@@ -203,6 +220,8 @@
       }
       await refresh();
     } catch (err) {
+      if (transfer && act === "desktop-import") transfer.classList.add("is-error");
+      if (transferLabel && act === "desktop-import") transferLabel.textContent = String(err.message || err);
       if (String(err).indexOf("cancelled") !== -1) return;
       var detail =
         (err.data && err.data.detail && (err.data.detail.message_en || err.data.detail.message)) ||

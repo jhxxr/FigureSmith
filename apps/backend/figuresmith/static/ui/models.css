@@ -18,3 +18,36 @@
   background: rgba(0,0,0,0.25);
   border: 1px solid var(--fs-border);
 }
+.fs-model-transfer {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  margin-top: 13px;
+  color: var(--fs-muted);
+  font-size: 0.78rem;
+}
+.fs-model-transfer[hidden] { display: none; }
+.fs-model-transfer::before {
+  content: "";
+  display: block;
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #2a3736;
+}
+.fs-model-transfer-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 34%;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--fs-accent);
+  animation: fs-model-transfer 1.15s ease-in-out infinite;
+}
+.fs-model-transfer.is-complete .fs-model-transfer-bar { width: 100%; animation: none; background: #50d2b3; }
+.fs-model-transfer.is-error .fs-model-transfer-bar { width: 100%; animation: none; background: var(--fs-danger); }
+@keyframes fs-model-transfer {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(330%); }
+}

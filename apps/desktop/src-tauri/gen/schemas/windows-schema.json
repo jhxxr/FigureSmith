@@ -369,6 +369,12 @@
           "markdownDescription": "Enables the open_models_directory command without any pre-configured scope."
         },
         {
+          "description": "Enables the prepare_managed_python_environment command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-prepare-managed-python-environment",
+          "markdownDescription": "Enables the prepare_managed_python_environment command without any pre-configured scope."
+        },
+        {
           "description": "Denies the import_rmbg_archive command without any pre-configured scope.",
           "type": "string",
           "const": "deny-import-rmbg-archive",
@@ -391,6 +397,12 @@
           "type": "string",
           "const": "deny-open-models-directory",
           "markdownDescription": "Denies the open_models_directory command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the prepare_managed_python_environment command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-prepare-managed-python-environment",
+          "markdownDescription": "Denies the prepare_managed_python_environment command without any pre-configured scope."
         },
         {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",

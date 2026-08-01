@@ -955,11 +955,12 @@ dependencies = [
 
 [[package]]
 name = "figuresmith-desktop"
-version = "0.6.1"
+version = "0.6.2"
 dependencies = [
  "rand",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",

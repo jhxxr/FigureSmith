@@ -22,18 +22,11 @@ if (-not $Cargo -or -not $Rustc) {
     Write-Error "Rust toolchain (cargo/rustc) not found. Install from https://rustup.rs and retry."
 }
 
-# Prefer project venv for the sidecar
-$VenvPython = Join-Path $RepoRoot ".venv\Scripts\python.exe"
-if (-not (Test-Path $VenvPython)) {
-    $VenvPython = Join-Path $RepoRoot "apps\backend\.venv\Scripts\python.exe"
-}
-if (Test-Path $VenvPython) {
-    $env:FIGURESMITH_PYTHON = $VenvPython
-    Write-Host "FIGURESMITH_PYTHON: $env:FIGURESMITH_PYTHON"
-} else {
-    Write-Host "Warning: project .venv not found. Sidecar will use PATH python." -ForegroundColor Yellow
-    Write-Host "Run ./scripts/setup-dev.ps1 first for a reliable backend." -ForegroundColor Yellow
-}
+# The desktop shell creates/uses a dedicated per-user Python environment.
+# FIGURESMITH_PYTHON remains available as an explicit base-Python override,
+# but the sidecar itself always runs from the isolated FigureSmith environment.
+Remove-Item Env:FIGURESMITH_PYTHON -ErrorAction SilentlyContinue
+Write-Host "The desktop sidecar will create/use the isolated FigureSmith environment under LocalAppData." -ForegroundColor DarkGreen
 
 $env:FIGURESMITH_REPO_ROOT = $RepoRoot
 $env:FIGURESMITH_STRICT_OFFLINE = "1"

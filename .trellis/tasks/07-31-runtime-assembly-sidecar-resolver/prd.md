@@ -1,50 +1,52 @@
-# Runtime Assembly and Sidecar Resolver
+# Application Pack and Isolated Python Sidecar
 
 ## Goal
 
-Build the canonical complete Runtime Directory offline from frozen inputs and
-make release desktop startup resolve and validate only that packaged runtime.
-
-## Dependencies
-
-- `07-31-runtime-contract-dependency-locks` must provide passing schemas, locks,
-  probe compatibility, and measurements.
-- `07-31-safe-beta-runtime-integration` must provide the final sidecar lifecycle.
-- `07-31-writable-application-data` must provide the immutable-resource versus
-  mutable-data contract.
-
-It provides a verified payload input to `07-31-setup-portable-artifact-smoke`.
+Ship an application-only Windows pack and make desktop startup select a
+supported user-installed Python only as a base for a dedicated FigureSmith
+virtual environment. Do not package CPython, pip, PyTorch, CUDA wheels, SAM3
+source, model weights, caches, or user data.
 
 ## Requirements
 
-- Acquire/download in a separate phase, then assemble from an empty directory
-  with network disabled, hash enforcement, no sdists, and no local builds.
-- Include isolated CPython, all locked packages/native DLLs, pinned SAM3 code and
-  non-weight assets, backend/vendor/editor/resources, locks, and legal notices.
-- Use one structured packaging implementation and one manifest-aware exclusion
-  policy; no divergent script/helper filters.
-- Run isolated imports and production app-factory smoke before generating and
-  independently verifying the full runtime manifest.
-- Add explicit Rust development and release resolvers. Release uses Tauri
-  Resource paths and rejects missing/hash/version/entry mismatch before spawn.
-- Release must never fall back to PATH Python, current directory, build paths,
-  or repository layout.
+- Copy application/vendor/resources/legal files through the existing safety
+  filters and generate an application-only `runtime-manifest.json` with a full
+  file inventory and SHA-256 hashes.
+- Include `requirements-runtime.txt` and a structured dependency contract that
+  separates bootstrap, model, generation, and SVG packages.
+- Resolve explicit `FIGURESMITH_PYTHON`, project environments, Windows `py
+  -0p`, PATH Python candidates, and known conda/virtualenv roots. Use one
+  supported Python 3.10-3.12 only as the base for
+  `%LOCALAPPDATA%\FigureSmith\python-env`.
+- Install bootstrap packages only into that isolated environment; never modify
+  the base Python and never silently fall back to repository Python in release.
+- Probe Torch/CUDA in a disposable Python process so broken native packages
+  cannot abort the backend process. Model package gaps must be visible without
+  preventing the editor from opening after bootstrap succeeds.
+- Release mode must use only Tauri Resource application files; missing,
+  tampered, wrong-version, embedded-runtime, weight, cache, or extra files fail
+  before sidecar spawn.
+- Welcome and splash UI must show selected Python, isolated environment path,
+  service readiness, model package readiness, GPU state, model import state,
+  one-click environment repair, and visual import progress.
 
 ## Acceptance Criteria
 
-- [ ] Two clean offline assemblies from the same inputs have identical manifest
-      file sets and hashes apart from explicitly normalized metadata.
-- [ ] Staged Python imports the complete application under isolated path rules.
-- [ ] Manifest verification covers every file and independent scanning confirms
-      no weight/cache/user data.
-- [ ] Production app factory reaches authenticated readiness from staged paths.
-- [ ] Release resolver selects packaged Python/backend through Tauri Resource on
-      raw/bundled test layouts and ignores hostile PATH/current-directory files.
-- [ ] Missing/corrupt/wrong-version runtime fails on the local splash before a
-      remote webview or backend child remains.
+- [x] Application pack builds without Python executables, wheels, model files,
+      or user data.
+- [x] Manifest independently verifies application inventory and hashes.
+- [x] Release resolver validates application identity/version and refuses source
+      fallback.
+- [x] Multiple Python candidates are probed and a supported base can create the
+      isolated environment without modifying the base.
+- [x] Native Torch/CUDA probing is isolated from the backend process.
+- [x] Welcome/splash flows expose one-click environment setup and visual model
+      import state in English and Chinese.
+- [ ] Windows clean artifact smoke confirms isolated environment creation from
+      multiple Python installations without modifying the bases.
 
 ## Out of Scope
 
-- Setup/Portable archive/installer construction and publish workflows.
-- Runtime dependency/version changes outside the frozen lock child.
-- Mutable data migration or model weights.
+- Bundling CPython or a complete ML runtime in the application pack.
+- Automatic installation of Python itself, PyTorch, CUDA, SAM3, or model weights.
+- Mutable data migration and model import transaction changes.

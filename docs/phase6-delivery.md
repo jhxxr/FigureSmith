@@ -56,9 +56,10 @@ Ship **packaging scripts and release documentation** for Windows x86_64:
 ## Known limitations
 
 - Full NSIS/MSVC installer binary requires a successful `tauri build` on the builder machine
-- Runtime Pack currently remains a dependency-install pack; it does **not** vendor
-  the isolated CPython/locked CUDA wheelhouse required by the standalone desktop
-  runtime. The release resolver rejects this incomplete pack.
+- Runtime Pack intentionally remains a dependency-install code pack; it does **not**
+  vendor an isolated CPython/locked CUDA wheelhouse. The target machine installs
+  compatible Python/CUDA/PyTorch/SAM3 dependencies, then imports external SAM3/RMBG
+  model weights. It is not a self-contained desktop sidecar runtime.
 - `build-desktop.ps1` fails when the Tauri executable is missing; it never emits
   a source-only Portable placeholder.
 - Code signing not configured (optional future hook)

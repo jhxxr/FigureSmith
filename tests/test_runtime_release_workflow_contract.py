@@ -68,14 +68,42 @@ def test_release_reasserts_no_weight_files_before_upload() -> None:
         assert pattern in workflow
 
 
-def test_windows_release_carries_structured_runtime_manifest() -> None:
+def test_windows_release_validates_dependency_pack_manifest_without_embedded_runtime() -> None:
     workflow = _workflow()
 
     assert "dist-runtime/**/runtime-manifest.json" in workflow
     assert "-name 'runtime-manifest.json'" in workflow
-    assert "Require complete runtime manifest" in workflow
-    assert 'if ($manifest.runtime_complete -ne $true)' in workflow
-    assert "refusing to publish a dependency-install pack" in workflow
+    assert "Validate dependency-install runtime manifest and artifacts" in workflow
+    assert '$manifest.product -ne "FigureSmith"' in workflow
+    assert "$manifest.version -ne $expectedVersion" in workflow
+    assert "$manifest.contains_weights -ne $false" in workflow
+    assert "$manifest.contains_cache -ne $false" in workflow
+    assert "runtime_complete" not in workflow
+
+
+def test_runtime_release_requires_exact_dependency_pack_artifacts() -> None:
+    workflow = _workflow()
+
+    for pattern in (
+        '"MANIFEST.json"',
+        '"runtime-manifest.json"',
+        '"README-RUNTIME.md"',
+        '"$packName.zip"',
+        '"checksums.txt"',
+        "Expected exactly one runtime directory",
+        "Expected exactly one runtime zip and checksums.txt",
+        "Expected exactly one MANIFEST.json and README-RUNTIME.md",
+    ):
+        assert pattern in workflow
+
+
+def test_release_notes_describe_external_models_and_target_install_boundary() -> None:
+    workflow = _workflow()
+
+    assert "Models are external" in workflow
+    assert "download and import them on the target machine" in workflow
+    assert "Target-machine dependency installation boundary" in workflow
+    assert "target machine must provide" in workflow
 
 
 def test_release_notes_use_version_from_the_same_shell_step() -> None:

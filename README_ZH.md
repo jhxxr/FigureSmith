@@ -27,7 +27,7 @@
 - 退出时 `POST /api/shutdown`，超时则清理进程树
 - 浏览器模式仍可用 `./scripts/run-backend.ps1`（无 Token）
 
-**不随仓库或发布包提供：** SAM3/RMBG 等模型权重。完整自包含运行时仍须按锁定依赖流程构建；目标机器不应在线安装依赖。
+**不随仓库或发布包提供：** SAM3/RMBG 等模型权重。Runtime Pack 是代码与依赖安装脚本包，目标机器需准备兼容的 Python/CUDA/PyTorch/SAM3 依赖；用户自行申请、下载模型后，在软件中导入即可。
 
 ### 本地模型环境变量
 

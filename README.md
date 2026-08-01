@@ -18,6 +18,9 @@ Phase 6 adds **Windows packaging tooling** on top of the Phase 5 desktop UX:
 Also includes welcome/models UX, local-only SAM UI, Tauri sidecar on **127.0.0.1**, and session token auth.
 
 **Not shipped in git/releases:** model weights (`sam3.pt`, RMBG safetensors, etc.).
+The Runtime Pack is a dependency-install code pack; prepare compatible Python/
+CUDA/PyTorch/SAM3 dependencies on the target machine, then download and import
+model files there through the application.
 
 ### Local model environment variables
 

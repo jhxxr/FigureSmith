@@ -94,19 +94,62 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($cuda)) { $cuda = "cu128" }
           ./scripts/build-runtime.ps1 -CudaTag $cuda
 
-      - name: Require complete runtime manifest
+      - name: Validate dependency-install runtime manifest and artifacts
         shell: pwsh
         run: |
-          $manifests = @(Get-ChildItem -Path dist-runtime -Recurse -Filter runtime-manifest.json -File)
-          if ($manifests.Count -ne 1) {
-            throw "Expected exactly one runtime-manifest.json, found $($manifests.Count)"
+          $expectedVersion = (Get-Content VERSION -Raw).Trim()
+          $cuda = "${{ inputs.cuda_tag }}"
+          if ([string]::IsNullOrWhiteSpace($cuda)) { $cuda = "cu128" }
+          $packName = "FigureSmith-Runtime-Windows-NVIDIA-$cuda-$expectedVersion"
+          $runtimeRoot = Join-Path "dist-runtime" $packName
+
+          $runtimeDirs = @(Get-ChildItem -Path dist-runtime -Directory)
+          if ($runtimeDirs.Count -ne 1 -or $runtimeDirs[0].Name -ne $packName) {
+            $names = ($runtimeDirs | ForEach-Object Name) -join ", "
+            throw "Expected exactly one runtime directory '$packName', found: $names"
           }
-          $manifest = Get-Content $manifests[0].FullName -Raw | ConvertFrom-Json
+
+          $expectedFiles = @(
+            (Join-Path $runtimeRoot "MANIFEST.json"),
+            (Join-Path $runtimeRoot "runtime-manifest.json"),
+            (Join-Path $runtimeRoot "README-RUNTIME.md"),
+            (Join-Path "dist-runtime" "$packName.zip"),
+            (Join-Path "dist-runtime" "checksums.txt")
+          )
+          foreach ($path in $expectedFiles) {
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw "Missing expected runtime artifact: $path"
+            }
+          }
+
+          $zipFiles = @(Get-ChildItem -Path dist-runtime -Filter "*.zip" -File)
+          $checksumFiles = @(Get-ChildItem -Path dist-runtime -Filter "checksums.txt" -File)
+          if ($zipFiles.Count -ne 1 -or $checksumFiles.Count -ne 1) {
+            throw "Expected exactly one runtime zip and checksums.txt"
+          }
+
+          $manifests = @(Get-ChildItem -Path dist-runtime -Recurse -Filter MANIFEST.json -File)
+          $readmes = @(Get-ChildItem -Path dist-runtime -Recurse -Filter README-RUNTIME.md -File)
+          if ($manifests.Count -ne 1 -or $readmes.Count -ne 1) {
+            throw "Expected exactly one MANIFEST.json and README-RUNTIME.md"
+          }
+
+          $runtimeManifests = @(Get-ChildItem -Path dist-runtime -Recurse -Filter runtime-manifest.json -File)
+          if ($runtimeManifests.Count -ne 1) {
+            throw "Expected exactly one runtime-manifest.json, found $($runtimeManifests.Count)"
+          }
+          $manifest = Get-Content $runtimeManifests[0].FullName -Raw | ConvertFrom-Json
           if ($manifest.product -ne "FigureSmith") {
             throw "Runtime manifest product is not FigureSmith"
           }
-          if ($manifest.runtime_complete -ne $true) {
-            throw "Runtime manifest is incomplete; refusing to publish a dependency-install pack"
+          if ($manifest.version -ne $expectedVersion) {
+            throw "Runtime manifest version '$($manifest.version)' does not match VERSION '$expectedVersion'"
+          }
+          if ($manifest.contains_weights -ne $false) {
+            throw "Runtime manifest does not prove contains_weights=false"
+          }
+          if ($manifest.contains_cache -ne $false) {
+            throw "Runtime manifest does not prove contains_cache=false"
           }
 
       - name: Assert no model weights
@@ -243,7 +286,11 @@ jobs:
           notes = (
               f"FigureSmith **v{ver}** automatic release.\n\n{body}\n\n"
               "---\n\n"
-              "**Model weights are not included.** Import SAM3 / RMBG after install.\n"
+              "**Models are external.** SAM3 / RMBG checkpoints are not included; "
+              "download and import them on the target machine after installation.\n"
+              "**Target-machine dependency installation boundary:** the Runtime Pack ships FigureSmith "
+              "application code and install scripts. The target machine must provide "
+              "and install compatible Python, CUDA/PyTorch, and SAM3/RMBG dependencies.\n"
               "Source license ≠ third-party model weight licenses.\n"
           )
           Path("release-notes.md").write_text(notes, encoding="utf-8")

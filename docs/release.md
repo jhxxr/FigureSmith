@@ -18,9 +18,14 @@
 ## Verify artifacts
 
 - [ ] `dist-runtime/**/MANIFEST.json` and `runtime-manifest.json` have
-  `"contains_weights": false`
+  `"contains_weights": false` and `"contains_cache": false` in the structured
+  runtime manifest; product/version match `FigureSmith` and `VERSION`
 - [ ] No `*.pt` / `*.safetensors` under `dist-runtime` or `dist-desktop`
 - [ ] `checksums.txt` present and hashes match
+- [ ] Runtime Pack is the dependency-install code pack: the target machine
+  installs compatible Python/CUDA/PyTorch/SAM3 dependencies before use
+- [ ] SAM3/RMBG model weights remain external; users download and import them
+  on the target machine after installing the Runtime Pack
 - [ ] Portable archive contains a real `FigureSmith.exe`; missing binaries fail
   the build and never produce a placeholder archive
 - [ ] Portable/README states models must be imported by the user

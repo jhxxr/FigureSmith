@@ -10,9 +10,16 @@
 
 > FigureSmith is an independent open-source project based on AutoFigure-Edit. It is not affiliated with or endorsed by ResearAI.
 
-## 阶段四状态
+## 阶段六状态
 
-阶段四交付 **Tauri 2 桌面壳 + 本地 Python Sidecar**（在阶段三模型管理之上）：
+阶段六在桌面 UX 基础上提供 **Windows 打包工具**：
+
+- `./scripts/build-runtime.ps1`：不含模型权重的 Runtime Pack
+- `./scripts/build-desktop.ps1`：生成 Setup/Portable 到 `dist-desktop/`
+- `./scripts/write-checksums.ps1`：生成 SHA-256 `checksums.txt`
+- 发布清单：[`docs/phase6-delivery.md`](./docs/phase6-delivery.md)、[`docs/release.md`](./docs/release.md)
+
+桌面端使用 **Tauri 2 + 本地 Python Sidecar**，并在阶段三模型管理之上提供：
 
 - `apps/desktop/` 启动桌面进程，Sidecar **仅绑定 127.0.0.1**
 - 一次性会话 Token（仅内存/子进程环境）保护 `/api/*` Bearer 鉴权
@@ -20,7 +27,7 @@
 - 退出时 `POST /api/shutdown`，超时则清理进程树
 - 浏览器模式仍可用 `./scripts/run-backend.ps1`（无 Token）
 
-**尚未包含：** 完整首次向导与硬件页打磨（阶段五）、Runtime Pack/安装包（阶段六）、仓库内模型权重。
+**不随仓库或发布包提供：** SAM3/RMBG 等模型权重。完整自包含运行时仍须按锁定依赖流程构建；目标机器不应在线安装依赖。
 
 ### 本地模型环境变量
 
@@ -90,13 +97,13 @@ copy .env.example .env
 FigureSmith/
 ├── apps/
 │   ├── backend/           # figuresmith 包 + main.py
-│   └── desktop/           # Tauri 占位（阶段四）
+│   └── desktop/           # Tauri 桌面壳与打包配置
 ├── vendor/
 │   ├── autofigure_edit/   # AutoFigure-Edit 基线
 │   └── svg_edit/          # svg-edit 边界副本
 ├── resources/             # model-manifest 空壳、licenses、notices
 ├── scripts/               # setup-dev、run-backend、后续占位脚本
-├── docs/                  # 开发、许可、阶段一交付说明
+├── docs/                  # 开发、许可、发布与阶段交付说明
 └── tests/                 # 冒烟测试
 ```
 
@@ -104,6 +111,8 @@ FigureSmith/
 
 - [docs/development.md](./docs/development.md) — 安装、启动、测试
 - [docs/phase1-delivery.md](./docs/phase1-delivery.md) — 阶段一清单与限制
+- [docs/phase6-delivery.md](./docs/phase6-delivery.md) — Windows 打包说明
+- [docs/release.md](./docs/release.md) — 发布检查清单
 - [docs/licenses.md](./docs/licenses.md) — 许可说明
 - [CHANGELOG.md](./CHANGELOG.md)
 
@@ -119,10 +128,10 @@ python -c "import figuresmith; print(figuresmith.__version__)"
 
 | 阶段 | 重点 |
 |------|------|
-| 1（当前） | 仓库骨架、vendor 导入、品牌与合规、开发入口 |
+| 1 | 仓库骨架、vendor 导入、品牌与合规、开发入口 |
 | 2 | 本地 SAM3/RMBG、模型包、离线路径 |
-| 3+ | 加固、安全、打包准备 |
-| 4 | Tauri 桌面壳 |
+| 3–5 | 加固、安全、模型管理与桌面 UX |
+| 6（当前） | Windows Runtime/Setup/Portable 打包工具与发布清单 |
 
 ## 引用 / 上游
 

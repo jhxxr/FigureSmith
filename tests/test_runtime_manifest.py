@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -12,6 +15,28 @@ from figuresmith.runtime.manifest import (
     verify_runtime_manifest,
     write_runtime_manifest,
 )
+
+
+def test_manifest_import_does_not_require_backend_runtime_dependencies() -> None:
+    env = dict(os.environ)
+    backend_root = Path(__file__).parents[1] / "apps" / "backend"
+    env["PYTHONPATH"] = str(backend_root)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys; "
+                "import figuresmith.runtime.manifest; "
+                "assert 'figuresmith.runtime.env' not in sys.modules"
+            ),
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
 
 
 def _complete_runtime(root: Path) -> None:

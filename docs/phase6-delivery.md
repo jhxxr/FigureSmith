@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-28  
 **Product:** FigureSmith / 图匠  
-**Version:** 0.6.0 (see root `VERSION`)  
+**Version:** 0.6.1 (see root `VERSION`)<br>
 **Task:** `.trellis/tasks/07-28-figuresmith-phase6-windows-packaging`
 
 ## Packaging baseline
@@ -34,7 +34,7 @@ Ship **packaging scripts and release documentation** for Windows x86_64:
 
 ## Layout
 
-### dist-runtime/FigureSmith-Runtime-Windows-NVIDIA-cu128-0.6.0/
+### dist-runtime/FigureSmith-Runtime-Windows-NVIDIA-cu128-0.6.1/
 
 - `app/backend`, `app/vendor/*`, `app/resources` (filtered)
 - `requirements-runtime.txt`, `scripts/install-deps.ps1`, `scripts/run-backend.ps1`
@@ -62,7 +62,7 @@ Ship **packaging scripts and release documentation** for Windows x86_64:
 - `build-desktop.ps1` fails when the Tauri executable is missing; it never emits
   a source-only Portable placeholder.
 - Code signing not configured (optional future hook)
-- GitHub Actions workflow is `workflow_dispatch` draft (may need larger runners for tauri)
+- GitHub Actions publishes only successful tag builds; manual dispatch is a packaging trial and never publishes
 
 ## Related docs
 

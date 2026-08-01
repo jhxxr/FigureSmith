@@ -1,6 +1,10 @@
-"""Runtime pack discovery and offline environment helpers."""
+"""Runtime pack discovery and offline environment helpers.
 
-from figuresmith.runtime.env import child_process_env, prepare_figuresmith_runtime
+The manifest and lock validators are intentionally importable by packaging
+tools that do not install the backend's ML/web dependencies.  Environment
+helpers therefore stay lazy: importing ``figuresmith.runtime.manifest`` must
+not pull in FastAPI, Starlette, or model registries.
+"""
 from figuresmith.runtime.locks import (
     RuntimeLockError,
     validate_lock_bundle,
@@ -30,3 +34,14 @@ __all__ = [
     "verify_runtime_manifest",
     "write_runtime_manifest",
 ]
+
+
+def __getattr__(name: str):
+    """Load process-environment helpers only when a caller requests them."""
+    if name in {"child_process_env", "prepare_figuresmith_runtime"}:
+        from figuresmith.runtime import env
+
+        value = getattr(env, name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

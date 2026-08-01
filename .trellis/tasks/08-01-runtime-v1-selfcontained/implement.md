@@ -43,19 +43,31 @@ end-to-end against a generated CPU bundle.
 
 ## Stage 3 — Acquire and commit real locks
 
-- [ ] Pin the CPython 3.12 Windows x64 embeddable version + SHA-256.
-- [ ] Resolve the full dependency closure on Windows x64 for both variants;
+- [x] Pin the CPython 3.12 Windows x64 embeddable version + SHA-256.
+- [x] Resolve the full dependency closure on Windows x64 for both variants;
       capture exact versions, wheel URLs, digests, tags, licenses.
-- [ ] Write `locks/requirements-win-py312-{cpu,cu128}.lock.json`,
-      `sources.lock.json`, `wheelhouse-manifest.json`.
-- [ ] Run `./scripts/validate-runtime-locks.ps1 -LockRoot locks -Wheelhouse
-      <dir>` for each variant until clean.
+- [x] Pin the native cairo DLL chain (12 MSYS2 packages) by SHA-256.
+- [ ] Commit `locks/requirements-win-py312-{cpu,cu128}.lock.json` and
+      `sources-{cpu,cu128}.lock.json`.
+- [ ] `wheelhouse-manifest.json` — CI produces it, since only CI downloads.
+- [x] Run the validator against generated locks until clean.
 
-Validation: validator exits 0 for both variants. Re-resolving from the declared
-direct inputs produces no unexplained diff.
+Done in 93e7c10 (resolver + guards). Locks generate and validate but are not
+yet committed: the cu128 pins move whenever the index advances, so committing
+them should coincide with CI being able to verify a full download against them.
 
-Risk: torch cu128 + torchvision compatibility, and SAM3's pinned revision. If a
-pair cannot be resolved, stop and report — do not relax a pin to make it pass.
+Two defects surfaced and were fixed rather than worked around:
+
+- The first cu128 closure was byte-identical to CPU. Unbounded `torch>=2.1` plus
+  pip's cross-index version preference resolved PyPI's newer CPU build while the
+  lock still claimed cu128. `VARIANT_CONSTRAINTS` + `_assert_variant_is_real()`
+  make that fail the resolve instead of shipping.
+- pip 24.0 could not resolve the cu128 index at all (5 min, no report, 1.8 GB
+  cached); pip 26.2 does it in 3.45 s. `_assert_pip_is_new_enough()` enforces the
+  floor. The same pip bug explained 28 spurious UNKNOWN licenses.
+
+MSYS2 filenames drift — 8 of 12 hand-written pins were already stale. Use
+`--refresh-msys2` rather than editing them by hand.
 
 ## Stage 4 — Manifest schema 2
 

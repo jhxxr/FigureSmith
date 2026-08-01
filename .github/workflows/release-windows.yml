@@ -185,8 +185,10 @@ jobs:
           $expanded = Join-Path $env:RUNNER_TEMP "figuresmith-runtime-expanded"
           if (Test-Path $expanded) { Remove-Item $expanded -Recurse -Force }
           Expand-Archive -LiteralPath $zip.FullName -DestinationPath $expanded -Force
-          $pack = Get-ChildItem -Path $expanded -Directory | Select-Object -First 1
-          if ($null -eq $pack) { throw "Runtime zip has no top-level directory" }
+          $manifestFiles = @(Get-ChildItem -Path $expanded -Recurse -Filter "runtime-manifest.json" -File)
+          if ($manifestFiles.Count -ne 1) { throw "Expected exactly one runtime-manifest.json after extraction, found $($manifestFiles.Count)" }
+          $pack = $manifestFiles[0].Directory
+          if ($null -eq $pack) { throw "Runtime archive manifest has no parent directory" }
           $target = Join-Path $PWD "apps/desktop/src-tauri/runtime"
           if (Test-Path $target) { Remove-Item $target -Recurse -Force }
           New-Item -ItemType Directory -Path $target -Force | Out-Null

@@ -42,6 +42,7 @@ from figuresmith.pipeline.vendor_bridge import (  # noqa: E402
     get_vendor_root,
     get_vendor_server_module_hint,
 )
+from figuresmith import __version__  # noqa: E402
 from figuresmith.runtime.env import prepare_figuresmith_runtime  # noqa: E402
 from figuresmith.security.offline import env_flag_true  # noqa: E402
 
@@ -230,7 +231,7 @@ def create_production_app(
     if vendor_app is None:
         vendor_app = _load_vendor_app()
 
-    app = FastAPI(title="FigureSmith", version="0.6.0")
+    app = FastAPI(title="FigureSmith", version=__version__)
     resolved_data_dir = resolved_paths.root
     app.state.figuresmith_app_paths = resolved_paths
     app.state.figuresmith_app_data_dir = str(resolved_data_dir)

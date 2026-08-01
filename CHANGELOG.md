@@ -10,6 +10,8 @@ All notable changes to FigureSmith are documented in this file.
 - Desktop sidecar sets `FIGURESMITH_DATA_DIR` next to `FigureSmith.exe` when unset.
 - Still falls back to `%LOCALAPPDATA%\FigureSmith` if the install folder is not writable (e.g. Program Files without admin).
 - Override anytime with `FIGURESMITH_DATA_DIR`.
+- Harden Safe Windows Beta runtime boundaries, manifest evidence, and fail-closed desktop packaging.
+- Validate local SAM3 GPU inference with external model weights; release artifacts contain no model weights.
 
 ## [0.6.0] — 2026-07-28
 

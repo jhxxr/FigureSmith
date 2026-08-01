@@ -146,7 +146,7 @@ Write-Host "Portable zip: $portableZip" -ForegroundColor Green
 
 # Refuse weight contamination in dist-desktop tree
 $bad = Get-ChildItem -Path $distDesktop -Recurse -File -ErrorAction SilentlyContinue | Where-Object {
-    $_.Extension.ToLowerInvariant() -in @(".pt", ".pth", ".onnx", ".safetensors", ".gguf", ".ckpt")
+    $_.Extension.ToLowerInvariant() -in @(".pt", ".pth", ".onnx", ".safetensors", ".gguf", ".ckpt", ".h5", ".pb", ".bin")
 }
 if ($bad) {
     Write-Error "Weight-like files in dist-desktop:`n$($bad.FullName -join "`n")"

@@ -15,7 +15,7 @@ if (-not (Test-Path $Path)) {
 }
 
 $weightExt = @(
-    ".pt", ".pth", ".onnx", ".safetensors", ".gguf", ".ckpt", ".h5", ".pb"
+    ".pt", ".pth", ".onnx", ".safetensors", ".gguf", ".ckpt", ".h5", ".pb", ".bin"
 )
 
 $bad = New-Object System.Collections.Generic.List[string]
@@ -24,7 +24,6 @@ function Test-WeightName([string]$name) {
     $n = $name.ToLowerInvariant()
     $ext = [System.IO.Path]::GetExtension($n)
     if ($weightExt -contains $ext) { return $true }
-    if ($n -like "pytorch_model*.bin") { return $true }
     if ($n -eq "model.safetensors" -or $n -like "model-*.safetensors") { return $true }
     return $false
 }

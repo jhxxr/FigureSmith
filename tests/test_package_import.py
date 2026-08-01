@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 
 def test_figuresmith_import_and_version() -> None:
     import figuresmith
 
     assert hasattr(figuresmith, "__version__")
-    assert figuresmith.__version__ == "0.6.0"
+    expected = (Path(__file__).resolve().parents[1] / "VERSION").read_text(
+        encoding="utf-8"
+    ).strip()
+    assert figuresmith.__version__ == expected
 
 
 def test_vendor_bridge_paths() -> None:

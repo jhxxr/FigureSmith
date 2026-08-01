@@ -2,7 +2,7 @@
 
 ## Before tagging
 
-- [ ] Bump root `VERSION`, `apps/backend/figuresmith/__init__.py`, `apps/backend/pyproject.toml`, `apps/desktop/src-tauri/tauri.conf.json`
+- [ ] Run `./scripts/ci/sync-version.ps1 -Version X.Y.Z` to align `VERSION`, Python, npm, Cargo, and Tauri metadata
 - [ ] Update `CHANGELOG.md`
 - [ ] `PYTHONPATH=apps/backend;vendor/autofigure_edit python -m pytest tests -q`
 - [ ] Confirm no weights staged: `git status` clean of `*.pt` / `*.safetensors`

@@ -9,6 +9,7 @@ from typing import Any, Literal, Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from figuresmith import __version__
 from figuresmith.models.errors import FigureSmithError
 from figuresmith.models.manager import ModelManager, error_payload
 
@@ -159,7 +160,7 @@ def create_models_app(
 
     from figuresmith.security.auth import install_auth_middleware
 
-    app = FastAPI(title="FigureSmith Model Manager", version="0.6.0")
+    app = FastAPI(title="FigureSmith Model Manager", version=__version__)
     if app_data_dir is not None:
         app.state.figuresmith_app_data_dir = str(app_data_dir)
     app.include_router(router)

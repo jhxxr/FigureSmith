@@ -2,7 +2,7 @@
 #
 # Triggers:
 #   - push tag v*     → test → runtime + desktop packs → GitHub Release
-#   - workflow_dispatch → manual trial (optional skip desktop / create release)
+#   - workflow_dispatch → manual packaging trial (never publishes)
 #
 # Hard rule: never upload model weights (*.pt, *.safetensors, …).
 
@@ -16,10 +16,6 @@ on:
     inputs:
       skip_desktop:
         description: "Skip Tauri desktop build (runtime-only)"
-        type: boolean
-        default: false
-      create_release:
-        description: "Create GitHub Release even on manual run (non-tag)"
         type: boolean
         default: false
       cuda_tag:
@@ -66,6 +62,10 @@ jobs:
         shell: pwsh
         run: ./scripts/ci/assert-version-tag.ps1
 
+      - name: Assert all version sources match VERSION
+        shell: pwsh
+        run: ./scripts/ci/sync-version.ps1 -CheckOnly
+
       - name: Run pytest
         shell: pwsh
         run: |
@@ -90,9 +90,24 @@ jobs:
       - name: Build Runtime Pack
         shell: pwsh
         run: |
-          $cuda = "${{ github.event.inputs.cuda_tag }}"
+          $cuda = "${{ inputs.cuda_tag }}"
           if ([string]::IsNullOrWhiteSpace($cuda)) { $cuda = "cu128" }
           ./scripts/build-runtime.ps1 -CudaTag $cuda
+
+      - name: Require complete runtime manifest
+        shell: pwsh
+        run: |
+          $manifests = @(Get-ChildItem -Path dist-runtime -Recurse -Filter runtime-manifest.json -File)
+          if ($manifests.Count -ne 1) {
+            throw "Expected exactly one runtime-manifest.json, found $($manifests.Count)"
+          }
+          $manifest = Get-Content $manifests[0].FullName -Raw | ConvertFrom-Json
+          if ($manifest.product -ne "FigureSmith") {
+            throw "Runtime manifest product is not FigureSmith"
+          }
+          if ($manifest.runtime_complete -ne $true) {
+            throw "Runtime manifest is incomplete; refusing to publish a dependency-install pack"
+          }
 
       - name: Assert no model weights
         shell: pwsh
@@ -174,15 +189,13 @@ jobs:
   release:
     name: github-release
     needs: [package-runtime, package-desktop]
-    # On manual skip_desktop, package-desktop is skipped — allow release of runtime-only when create_release or tag.
+    # Manual dispatch is a packaging trial only. Publishing requires a tag.
     if: |
       always() &&
       needs.package-runtime.result == 'success' &&
-      (needs.package-desktop.result == 'success' || needs.package-desktop.result == 'skipped') &&
-      (
-        startsWith(github.ref, 'refs/tags/v') ||
-        (github.event_name == 'workflow_dispatch' && inputs.create_release == true)
-      )
+      needs.package-desktop.result == 'success' &&
+      github.event_name == 'push' &&
+      startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -218,6 +231,7 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VER" >> "$GITHUB_OUTPUT"
           # extract-changelog is PowerShell; use python fallback on ubuntu for notes
+          export VER
           python3 - <<'PY'
           from pathlib import Path
           import os, re
@@ -235,9 +249,6 @@ jobs:
           Path("release-notes.md").write_text(notes, encoding="utf-8")
           print(f"Wrote release-notes.md for {ver}")
           PY
-        env:
-          VER: ${{ steps.meta.outputs.version }}
-
       - name: Collect asset files
         id: assets
         shell: bash
@@ -271,6 +282,7 @@ jobs:
           if find upload -type f \( \
               -iname '*.pt' -o -iname '*.pth' -o -iname '*.onnx' -o -iname '*.safetensors' \
               -o -iname '*.gguf' -o -iname '*.ckpt' -o -iname '*.h5' -o -iname '*.pb' \
+              -o -iname '*.bin' \
             \) | grep -q .; then
             echo "ERROR: weight-like files in upload/"
             find upload -type f | sort
@@ -286,7 +298,7 @@ jobs:
           body_path: release-notes.md
           draft: false
           prerelease: ${{ contains(steps.meta.outputs.version, '-') }}
-          fail_on_unmatched_files: false
+          fail_on_unmatched_files: true
           files: |
             upload/**
         env:

@@ -45,9 +45,8 @@ New-Item -ItemType Directory -Path $packDir | Out-Null
 function Test-IsWeightOrExcluded([string]$fullPath, [string]$root) {
     $name = [System.IO.Path]::GetFileName($fullPath).ToLowerInvariant()
     $ext = [System.IO.Path]::GetExtension($fullPath).ToLowerInvariant()
-    $weightExt = @(".pt", ".pth", ".onnx", ".safetensors", ".gguf", ".ckpt", ".h5", ".pb")
+    $weightExt = @(".pt", ".pth", ".onnx", ".safetensors", ".gguf", ".ckpt", ".h5", ".pb", ".bin")
     if ($weightExt -contains $ext) { return $true }
-    if ($name -like "pytorch_model*.bin") { return $true }
 
     $rel = $fullPath.Substring($root.Length).TrimStart("\", "/").ToLowerInvariant()
     $parts = $rel -split "[\\/]"
@@ -221,7 +220,7 @@ Source code license ≠ third-party model weight licenses.
 # Safety scan: fail if any weight slipped in
 $bad = Get-ChildItem -Path $packDir -Recurse -File | Where-Object {
     $ext = $_.Extension.ToLowerInvariant()
-    $ext -in @(".pt", ".pth", ".onnx", ".safetensors", ".gguf", ".ckpt")
+    $ext -in @(".pt", ".pth", ".onnx", ".safetensors", ".gguf", ".ckpt", ".h5", ".pb", ".bin")
 }
 if ($bad) {
     Write-Error "Refusing to publish Runtime Pack: weight-like files found:`n$($bad.FullName -join "`n")"

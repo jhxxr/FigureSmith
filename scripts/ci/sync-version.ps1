@@ -99,7 +99,98 @@ if (Test-Path $tauri) {
     Write-Warning "tauri.conf.json not found (skip)"
 }
 
-# 4) Ensure VERSION file matches when not CheckOnly
+# 4) apps/desktop/package.json root version
+$desktopPackage = Join-Path $RepoRoot "apps\desktop\package.json"
+if (Test-Path $desktopPackage) {
+    $t = Get-FileText $desktopPackage
+    $match = [regex]::Match($t, '(?m)^\s{2}"version"\s*:\s*"([^"]+)"')
+    if ($match.Success) {
+        $cur = $match.Groups[1].Value
+        if ($CheckOnly) {
+            if ($cur -ne $Version) { $errors.Add("package.json version='$cur' != VERSION '$Version'") | Out-Null }
+        } else {
+            $replacement = '${1}' + $Version + '${2}'
+            $t2 = [regex]::Replace($t, '(?m)^(\s{2}"version"\s*:\s*")[^"]+("\s*,?)$', $replacement, 1)
+            Set-FileText $desktopPackage $t2
+            Write-Host "Updated package.json -> $Version"
+        }
+    } else {
+        $errors.Add("package.json: root version field not found") | Out-Null
+    }
+} else {
+    $errors.Add("missing $desktopPackage") | Out-Null
+}
+
+# 5) apps/desktop/package-lock.json root and application package versions
+$desktopLock = Join-Path $RepoRoot "apps\desktop\package-lock.json"
+if (Test-Path $desktopLock) {
+    $t = Get-FileText $desktopLock
+    $top = [regex]::Match($t, '(?m)^\s{2}"version"\s*:\s*"([^"]+)"')
+    $app = [regex]::Match(
+        $t,
+        '(?ms)"packages"\s*:\s*\{\s*\r?\n\s{4}""\s*:\s*\{\s*\r?\n\s{6}"name"\s*:\s*"figuresmith-desktop",\s*\r?\n\s{6}"version"\s*:\s*"([^"]+)"'
+    )
+    if (-not $top.Success -or -not $app.Success) {
+        $errors.Add("package-lock.json: root application version fields not found") | Out-Null
+    } elseif ($CheckOnly) {
+        if ($top.Groups[1].Value -ne $Version) { $errors.Add("package-lock.json root version='$($top.Groups[1].Value)' != VERSION '$Version'") | Out-Null }
+        if ($app.Groups[1].Value -ne $Version) { $errors.Add("package-lock.json application version='$($app.Groups[1].Value)' != VERSION '$Version'") | Out-Null }
+    } else {
+        $replacement = '${1}' + $Version + '${2}'
+        $t = [regex]::Replace($t, '(?m)^(\s{2}"version"\s*:\s*")[^"]+("\s*,?)$', $replacement, 1)
+        $t = [regex]::Replace($t, '(?ms)("packages"\s*:\s*\{\s*\r?\n\s{4}""\s*:\s*\{\s*\r?\n\s{6}"name"\s*:\s*"figuresmith-desktop",\s*\r?\n\s{6}"version"\s*:\s*")[^"]+(")', $replacement, 1)
+        Set-FileText $desktopLock $t
+        Write-Host "Updated package-lock.json -> $Version"
+    }
+} else {
+    $errors.Add("missing $desktopLock") | Out-Null
+}
+
+# 6) apps/desktop/src-tauri/Cargo.toml package version
+$cargoToml = Join-Path $RepoRoot "apps\desktop\src-tauri\Cargo.toml"
+if (Test-Path $cargoToml) {
+    $t = Get-FileText $cargoToml
+    $match = [regex]::Match($t, '(?m)^version\s*=\s*"([^"]+)"')
+    if ($match.Success) {
+        $cur = $match.Groups[1].Value
+        if ($CheckOnly) {
+            if ($cur -ne $Version) { $errors.Add("Cargo.toml version='$cur' != VERSION '$Version'") | Out-Null }
+        } else {
+            $replacement = '${1}' + $Version + '${2}'
+            $t2 = [regex]::Replace($t, '(?m)^(version\s*=\s*")[^"]+("\s*)$', $replacement, 1)
+            Set-FileText $cargoToml $t2
+            Write-Host "Updated Cargo.toml -> $Version"
+        }
+    } else {
+        $errors.Add("Cargo.toml: package version field not found") | Out-Null
+    }
+} else {
+    $errors.Add("missing $cargoToml") | Out-Null
+}
+
+# 7) apps/desktop/src-tauri/Cargo.lock application package version
+$cargoLock = Join-Path $RepoRoot "apps\desktop\src-tauri\Cargo.lock"
+if (Test-Path $cargoLock) {
+    $t = Get-FileText $cargoLock
+    $match = [regex]::Match($t, '(?ms)\[\[package\]\]\s*\r?\nname\s*=\s*"figuresmith-desktop"\s*\r?\nversion\s*=\s*"([^"]+)"')
+    if ($match.Success) {
+        $cur = $match.Groups[1].Value
+        if ($CheckOnly) {
+            if ($cur -ne $Version) { $errors.Add("Cargo.lock figuresmith-desktop version='$cur' != VERSION '$Version'") | Out-Null }
+        } else {
+            $replacement = '${1}' + $Version + '${2}'
+            $t2 = [regex]::Replace($t, '(?ms)(\[\[package\]\]\s*\r?\nname\s*=\s*"figuresmith-desktop"\s*\r?\nversion\s*=\s*")[^"]+(")', $replacement, 1)
+            Set-FileText $cargoLock $t2
+            Write-Host "Updated Cargo.lock -> $Version"
+        }
+    } else {
+        $errors.Add("Cargo.lock: figuresmith-desktop package version not found") | Out-Null
+    }
+} else {
+    $errors.Add("missing $cargoLock") | Out-Null
+}
+
+# 8) Ensure VERSION file matches when not CheckOnly
 $verFile = Join-Path $RepoRoot "VERSION"
 if (-not $CheckOnly) {
     Set-FileText $verFile ($Version + "`n")

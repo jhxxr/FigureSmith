@@ -62,6 +62,18 @@ def requirements_lock_name(variant: str = DEFAULT_VARIANT) -> str:
     return f"requirements-win-py312-{variant}.lock.json"
 
 
+def sources_lock_name(variant: str = DEFAULT_VARIANT) -> str:
+    """Return the committed sources-lock filename for a variant.
+
+    CPython and the native DLL chain are identical across variants, but every
+    lock file carries a variant stamp and a bundle must agree on it, so each
+    variant gets its own copy rather than sharing one unstamped file.
+    """
+    if variant not in SUPPORTED_VARIANTS:
+        raise RuntimeLockError(f"unsupported runtime variant: {variant!r}")
+    return f"sources-{variant}.lock.json"
+
+
 def _object(value: Any, label: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise RuntimeLockError(f"{label} must be a JSON object")
@@ -353,7 +365,7 @@ def validate_lock_bundle(
         variant = present[0]
     requirements_path = root / requirements_lock_name(variant)
     requirements = validate_requirements_lock(_read_json(requirements_path))
-    sources = validate_sources_lock(_read_json(root / SOURCES_LOCK_NAME))
+    sources = validate_sources_lock(_read_json(root / sources_lock_name(variant)))
     wheelhouse_value = _read_json(root / WHEELHOUSE_MANIFEST_NAME)
     wheelhouse = validate_wheelhouse_manifest(wheelhouse_value)
     # All three locks must agree on the variant they target.
@@ -419,6 +431,7 @@ __all__ = [
     "RuntimeLockError",
     "render_pip_requirements",
     "requirements_lock_name",
+    "sources_lock_name",
     "validate_lock_bundle",
     "validate_requirements_lock",
     "validate_sources_lock",

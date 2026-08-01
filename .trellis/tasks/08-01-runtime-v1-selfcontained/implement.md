@@ -5,13 +5,13 @@ prerequisites that unblock everything else and carry the highest uncertainty.
 
 ## Stage 1 — Unblock the packaging gates
 
-- [ ] Fix `api/system_routes.py:53` to resolve `dependencies.json` from
+- [x] Fix `api/system_routes.py:53` to resolve `dependencies.json` from
       `figuresmith/runtime/`, and stop swallowing the read error silently — a
       missing contract must log, not degrade to a 7-entry default.
-- [ ] Align the two dependency-contract loaders: Rust (`sidecar.rs:701`)
+- [x] Align the two dependency-contract loaders: Rust (`sidecar.rs:701`)
       requires `distribution`/`import`/`scope`, Python additionally requires
       `requirement`. Pick one shape and assert it in both.
-- [ ] Rewrite `is_weight_file` with a `site_packages_root` context parameter;
+- [x] Rewrite `is_weight_file` with a `site_packages_root` context parameter;
       drop the `python312._pth` special case. Add tests for: `sam3.pt` refused,
       `distutils-precedence.pth` allowed under site-packages, `nvidia` `.bin`
       allowed under site-packages, `.bin` outside site-packages refused.
@@ -20,16 +20,26 @@ Validation: `python -m pytest tests/test_packaging_excludes.py
 tests/test_dependency_contract.py -q`, plus a new test asserting the doctor
 reports all 19 contract entries.
 
+Done in 86b9d30. The two new dependency-contract tests were confirmed to fail
+against the old path before the fix. Loader drift is reported as a warning
+rather than unified, because the Rust side legitimately needs only three
+fields; forcing one shape would have been a wider change than the bug required.
+
 ## Stage 2 — Widen the lock validator
 
-- [ ] `locks.py:78` — accept `cuda` in `{"cpu", "cu128"}` instead of requiring
+- [x] `locks.py:78` — accept `cuda` in `{"cpu", "cu128"}` instead of requiring
       `cu128`. Keep every other constraint unchanged.
-- [ ] Add a lock→pip requirements emitter producing `==` pins with
+- [x] Add a lock→pip requirements emitter producing `==` pins with
       `--hash=sha256:` lines.
-- [ ] Extend `tests/test_runtime_locks.py` for the CPU variant and the emitter,
+- [x] Extend `tests/test_runtime_locks.py` for the CPU variant and the emitter,
       including a negative test that a range or sdist is still rejected.
 
 Validation: `python -m pytest tests/test_runtime_locks.py -q`.
+
+Done in 86b9d30. `_header` now returns the variant and `validate_lock_bundle`
+rejects a bundle whose three locks disagree, plus an ambiguous lock root that
+holds both variants. CLI gained `--variant` and `--emit-requirements`, verified
+end-to-end against a generated CPU bundle.
 
 ## Stage 3 — Acquire and commit real locks
 

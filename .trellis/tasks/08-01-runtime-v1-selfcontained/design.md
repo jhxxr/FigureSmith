@@ -46,9 +46,29 @@ Three committed artifacts per variant, all validated by the existing `locks.py`:
 
 - `requirements-win-py312-<variant>.lock.json` — exact version, wheel filename,
   HTTPS URL, SHA-256, wheel tags, license per distribution.
-- `sources.lock.json` — CPython embeddable archive, SAM3 source revision, and
-  any non-wheel input, each with SHA-256; git sources need a full 40-hex commit.
+- `sources.lock.json` — CPython embeddable archive, SAM3 source revision, the
+  MSYS2 cairo DLL chain, and any non-wheel input, each with SHA-256; git sources
+  need a full 40-hex commit.
 - `wheelhouse-manifest.json` — inventory of the acquired `.whl` files.
+
+### Native libraries
+
+`cairosvg` reaches outside the wheel for `libcairo-2.dll` through `cairocffi`,
+which `dlopen`s a real DLL. No PyPI wheel supplies one. Measured closure of the
+MSYS2 `mingw-w64-x86_64-cairo` package: **14 DLLs, 8.3 MB**, from ~10 packages
+(see `research/cairosvg-decision.md`).
+
+These ship in the pack under `python/Lib/site-packages/cairocffi/` or a
+dedicated `native/` directory on the DLL search path, and each is pinned in
+`sources.lock.json` with a SHA-256 and license record. This is a second supply
+chain — distro packages, not PyPI, no per-file signing — and is accepted
+deliberately: `svglib` renders the same cairo but through a weaker SVG parser
+that silently drops embedded base64 figures, which is what the optimizer's LLM
+vision comparison consumes.
+
+`sources.lock.json` entries for these use `kind: "archive"` with the MSYS2
+package URL and its `.pkg.tar.zst` digest; assembly extracts the specific DLLs
+named in the lock rather than the whole package.
 
 `locks.py` currently hard-requires `runtime.cuda == "cu128"` (`locks.py:78`).
 That check widens to an allowlist of `{"cpu", "cu128"}` so the CPU variant can

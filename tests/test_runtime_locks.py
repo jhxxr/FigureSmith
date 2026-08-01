@@ -10,11 +10,11 @@ import pytest
 
 from figuresmith.runtime.locks import (
     REQUIREMENTS_LOCK_NAME,
-    SOURCES_LOCK_NAME,
     SUPPORTED_VARIANTS,
     WHEELHOUSE_MANIFEST_NAME,
     RuntimeLockError,
     render_pip_requirements,
+    sources_lock_name,
     requirements_lock_name,
     validate_lock_bundle,
     validate_requirements_lock,
@@ -64,7 +64,7 @@ def _write_bundle(tmp_path: Path, variant: str = "cu128") -> tuple[Path, Path]:
         },
     )
     _write_json(
-        lock_root / SOURCES_LOCK_NAME,
+        lock_root / sources_lock_name(variant),
         {
             "schema": 1,
             "product": "FigureSmith",
@@ -136,7 +136,9 @@ def test_requirements_lock_rejects_ranges_and_sdists(tmp_path: Path) -> None:
 
 def test_sources_lock_requires_immutable_git_revision(tmp_path: Path) -> None:
     lock_root, _ = _write_bundle(tmp_path)
-    sources = json.loads((lock_root / SOURCES_LOCK_NAME).read_text(encoding="utf-8"))
+    sources = json.loads(
+        (lock_root / sources_lock_name("cu128")).read_text(encoding="utf-8")
+    )
     sources["sources"][1]["revision"] = "main"
 
     with pytest.raises(RuntimeLockError, match="full commit hash"):
@@ -201,9 +203,11 @@ def test_mixed_variant_bundle_is_rejected(tmp_path: Path) -> None:
     # A cu128 requirements lock beside a cpu sources lock would otherwise
     # assemble CUDA wheels into a pack advertised as CPU-only.
     lock_root, wheelhouse = _write_bundle(tmp_path, variant="cu128")
-    sources = json.loads((lock_root / SOURCES_LOCK_NAME).read_text(encoding="utf-8"))
+    sources = json.loads(
+        (lock_root / sources_lock_name("cu128")).read_text(encoding="utf-8")
+    )
     sources["runtime"] = {**RUNTIME, "cuda": "cpu"}
-    _write_json(lock_root / SOURCES_LOCK_NAME, sources)
+    _write_json(lock_root / sources_lock_name("cu128"), sources)
 
     with pytest.raises(RuntimeLockError, match="variants do not match"):
         validate_lock_bundle(lock_root, wheelhouse_root=wheelhouse, variant="cu128")

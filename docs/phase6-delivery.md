@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-28  
 **Product:** FigureSmith / 图匠  
-**Version:** 0.6.2 (see root `VERSION`)<br>
+**Version:** 0.6.3 (see root `VERSION`)<br>
 **Task:** `.trellis/tasks/07-28-figuresmith-phase6-windows-packaging`
 
 ## Packaging baseline

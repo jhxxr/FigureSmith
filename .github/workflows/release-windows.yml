@@ -190,8 +190,14 @@ jobs:
           $target = Join-Path $PWD "apps/desktop/src-tauri/runtime"
           if (Test-Path $target) { Remove-Item $target -Recurse -Force }
           New-Item -ItemType Directory -Path $target -Force | Out-Null
-          Copy-Item (Join-Path $pack.FullName "*") $target -Recurse -Force
-          $manifest = Get-Content (Join-Path $target "runtime-manifest.json") -Raw | ConvertFrom-Json
+          # Copy each top-level entry explicitly so PowerShell does not nest the
+          # extracted pack directory or drop its root files.
+          Get-ChildItem -LiteralPath $pack.FullName -Force | ForEach-Object {
+            Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $target $_.Name) -Recurse -Force
+          }
+          $manifestPath = Join-Path $target "runtime-manifest.json"
+          if (-not (Test-Path $manifestPath -PathType Leaf)) { throw "Staged application pack is missing runtime-manifest.json" }
+          $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
           if ($manifest.application_only -ne $true -or $manifest.python_required -ne "external") { throw "Downloaded runtime is not an application-only pack" }
           if (-not (Test-Path (Join-Path $target "requirements-bootstrap.txt") -PathType Leaf)) { throw "Bootstrap dependency guidance is missing" }
           if (-not (Test-Path (Join-Path $target "requirements-models.txt") -PathType Leaf)) { throw "Model dependency guidance is missing" }

@@ -2,6 +2,12 @@
 
 All notable changes to FigureSmith are documented in this file.
 
+## [0.6.3] — 2026-08-01
+
+### Windows packaging fix
+
+- Fix GitHub Actions staging of the application Runtime Pack into Tauri resources so the desktop package receives the manifest and dependency guidance at the expected root.
+
 ## [0.6.2] — 2026-08-01
 
 ### User-managed Windows runtime

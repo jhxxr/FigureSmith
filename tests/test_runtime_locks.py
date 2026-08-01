@@ -11,8 +11,11 @@ import pytest
 from figuresmith.runtime.locks import (
     REQUIREMENTS_LOCK_NAME,
     SOURCES_LOCK_NAME,
+    SUPPORTED_VARIANTS,
     WHEELHOUSE_MANIFEST_NAME,
     RuntimeLockError,
+    render_pip_requirements,
+    requirements_lock_name,
     validate_lock_bundle,
     validate_requirements_lock,
     validate_sources_lock,
@@ -31,21 +34,22 @@ def _write_json(path: Path, value: object) -> None:
     path.write_text(json.dumps(value, indent=2), encoding="utf-8")
 
 
-def _write_bundle(tmp_path: Path) -> tuple[Path, Path]:
+def _write_bundle(tmp_path: Path, variant: str = "cu128") -> tuple[Path, Path]:
     lock_root = tmp_path / "locks"
     wheelhouse = tmp_path / "wheelhouse"
     lock_root.mkdir()
     wheelhouse.mkdir()
+    runtime = {**RUNTIME, "cuda": variant}
     wheel_name = "fastapi-1.2.3-py3-none-any.whl"
     wheel_bytes = b"wheel fixture"
     (wheelhouse / wheel_name).write_bytes(wheel_bytes)
 
     _write_json(
-        lock_root / REQUIREMENTS_LOCK_NAME,
+        lock_root / requirements_lock_name(variant),
         {
             "schema": 1,
             "product": "FigureSmith",
-            "runtime": RUNTIME,
+            "runtime": runtime,
             "packages": [
                 {
                     "name": "fastapi",
@@ -64,7 +68,7 @@ def _write_bundle(tmp_path: Path) -> tuple[Path, Path]:
         {
             "schema": 1,
             "product": "FigureSmith",
-            "runtime": RUNTIME,
+            "runtime": runtime,
             "sources": [
                 {
                     "name": "cpython-embeddable",
@@ -91,7 +95,7 @@ def _write_bundle(tmp_path: Path) -> tuple[Path, Path]:
         {
             "schema": 1,
             "product": "FigureSmith",
-            "runtime": RUNTIME,
+            "runtime": runtime,
             "file_count": 1,
             "files": [
                 {
@@ -167,3 +171,76 @@ def test_wheelhouse_manifest_rejects_weight_like_path(tmp_path: Path) -> None:
     manifest["files"][0]["path"] = "models/sam3.pt"
     with pytest.raises(RuntimeLockError, match="forbidden cache/data segment"):
         validate_wheelhouse_manifest(manifest)
+
+
+@pytest.mark.parametrize("variant", SUPPORTED_VARIANTS)
+def test_both_variants_validate_from_one_lock_schema(
+    tmp_path: Path, variant: str
+) -> None:
+    lock_root, wheelhouse = _write_bundle(tmp_path, variant=variant)
+
+    result = validate_lock_bundle(
+        lock_root, wheelhouse_root=wheelhouse, variant=variant
+    )
+
+    assert result["variant"] == variant
+    assert result["wheel_count"] == 1
+
+
+def test_unknown_variant_is_rejected(tmp_path: Path) -> None:
+    lock_root, _ = _write_bundle(tmp_path)
+    requirements = json.loads(
+        (lock_root / REQUIREMENTS_LOCK_NAME).read_text(encoding="utf-8")
+    )
+    requirements["runtime"] = {**RUNTIME, "cuda": "cu999"}
+    with pytest.raises(RuntimeLockError, match="variant must be one of"):
+        validate_requirements_lock(requirements)
+
+
+def test_mixed_variant_bundle_is_rejected(tmp_path: Path) -> None:
+    # A cu128 requirements lock beside a cpu sources lock would otherwise
+    # assemble CUDA wheels into a pack advertised as CPU-only.
+    lock_root, wheelhouse = _write_bundle(tmp_path, variant="cu128")
+    sources = json.loads((lock_root / SOURCES_LOCK_NAME).read_text(encoding="utf-8"))
+    sources["runtime"] = {**RUNTIME, "cuda": "cpu"}
+    _write_json(lock_root / SOURCES_LOCK_NAME, sources)
+
+    with pytest.raises(RuntimeLockError, match="variants do not match"):
+        validate_lock_bundle(lock_root, wheelhouse_root=wheelhouse, variant="cu128")
+
+
+def test_ambiguous_lock_root_requires_explicit_variant(tmp_path: Path) -> None:
+    lock_root, wheelhouse = _write_bundle(tmp_path, variant="cu128")
+    cpu_lock = json.loads(
+        (lock_root / REQUIREMENTS_LOCK_NAME).read_text(encoding="utf-8")
+    )
+    cpu_lock["runtime"] = {**RUNTIME, "cuda": "cpu"}
+    _write_json(lock_root / requirements_lock_name("cpu"), cpu_lock)
+
+    with pytest.raises(RuntimeLockError, match="ambiguous"):
+        validate_lock_bundle(lock_root, wheelhouse_root=wheelhouse)
+
+
+def test_pip_requirements_pin_exact_versions_with_hashes(tmp_path: Path) -> None:
+    lock_root, _ = _write_bundle(tmp_path)
+    requirements = json.loads(
+        (lock_root / REQUIREMENTS_LOCK_NAME).read_text(encoding="utf-8")
+    )
+
+    rendered = render_pip_requirements(requirements)
+
+    assert "--no-index" in rendered
+    digest = requirements["packages"][0]["sha256"]
+    assert f"fastapi==1.2.3 --hash=sha256:{digest}" in rendered
+    # No range operator may survive into the pip input.
+    assert ">=" not in rendered and "<" not in rendered
+
+
+def test_pip_requirements_refuse_an_unpinned_lock(tmp_path: Path) -> None:
+    lock_root, _ = _write_bundle(tmp_path)
+    requirements = json.loads(
+        (lock_root / REQUIREMENTS_LOCK_NAME).read_text(encoding="utf-8")
+    )
+    requirements["packages"][0]["version"] = ">=1.2"
+    with pytest.raises(RuntimeLockError, match="exact version"):
+        render_pip_requirements(requirements)

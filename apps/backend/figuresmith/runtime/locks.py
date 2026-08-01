@@ -17,6 +17,10 @@ from typing import Any, Mapping, Sequence
 from urllib.parse import urlparse
 
 LOCK_SCHEMA = 1
+# Runtime V1 ships two variants from one assembly path. ``cu128`` carries the
+# CUDA wheels; ``cpu`` carries a CPU-only Torch pair and no ``nvidia-*`` wheels.
+SUPPORTED_VARIANTS = ("cpu", "cu128")
+DEFAULT_VARIANT = "cu128"
 REQUIREMENTS_LOCK_NAME = "requirements-win-py312-cu128.lock.json"
 SOURCES_LOCK_NAME = "sources.lock.json"
 WHEELHOUSE_MANIFEST_NAME = "wheelhouse-manifest.json"
@@ -51,6 +55,13 @@ class RuntimeLockError(ValueError):
     """Raised when a committed lock or its verified cache is unsafe."""
 
 
+def requirements_lock_name(variant: str = DEFAULT_VARIANT) -> str:
+    """Return the committed requirements-lock filename for a variant."""
+    if variant not in SUPPORTED_VARIANTS:
+        raise RuntimeLockError(f"unsupported runtime variant: {variant!r}")
+    return f"requirements-win-py312-{variant}.lock.json"
+
+
 def _object(value: Any, label: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise RuntimeLockError(f"{label} must be a JSON object")
@@ -65,7 +76,7 @@ def _read_json(path: Path) -> Mapping[str, Any]:
     return _object(value, str(path))
 
 
-def _header(value: Mapping[str, Any], label: str) -> None:
+def _header(value: Mapping[str, Any], label: str) -> str:
     if value.get("schema") != LOCK_SCHEMA:
         raise RuntimeLockError(f"{label} has unsupported schema")
     if value.get("product") != "FigureSmith":
@@ -75,8 +86,12 @@ def _header(value: Mapping[str, Any], label: str) -> None:
         raise RuntimeLockError(
             f"{label} targets something other than Windows Python 3.12"
         )
-    if runtime.get("cuda") != "cu128":
-        raise RuntimeLockError(f"{label} targets something other than cu128")
+    variant = runtime.get("cuda")
+    if variant not in SUPPORTED_VARIANTS:
+        raise RuntimeLockError(
+            f"{label} variant must be one of {', '.join(SUPPORTED_VARIANTS)}"
+        )
+    return str(variant)
 
 
 def _exact_version(value: Any, label: str) -> str:
@@ -121,7 +136,7 @@ def _wheel_name(value: Any, label: str) -> str:
 
 def validate_requirements_lock(value: Mapping[str, Any]) -> dict[str, Any]:
     """Validate the exact wheel lock consumed by offline assembly."""
-    _header(value, "requirements lock")
+    variant = _header(value, "requirements lock")
     raw_packages = value.get("packages")
     if not isinstance(raw_packages, list) or not raw_packages:
         raise RuntimeLockError("requirements lock packages must be a non-empty list")
@@ -160,12 +175,12 @@ def validate_requirements_lock(value: Mapping[str, Any]) -> dict[str, Any]:
                 "license": license_name,
             }
         )
-    return {"packages": packages, "package_count": len(packages)}
+    return {"packages": packages, "package_count": len(packages), "variant": variant}
 
 
 def validate_sources_lock(value: Mapping[str, Any]) -> dict[str, Any]:
     """Validate CPython/SAM3/source archives and immutable revisions."""
-    _header(value, "sources lock")
+    variant = _header(value, "sources lock")
     raw_sources = value.get("sources")
     if not isinstance(raw_sources, list) or not raw_sources:
         raise RuntimeLockError("sources lock sources must be a non-empty list")
@@ -209,12 +224,12 @@ def validate_sources_lock(value: Mapping[str, Any]) -> dict[str, Any]:
                 **({"revision": revision} if revision is not None else {}),
             }
         )
-    return {"sources": sources, "source_count": len(sources)}
+    return {"sources": sources, "source_count": len(sources), "variant": variant}
 
 
 def validate_wheelhouse_manifest(value: Mapping[str, Any]) -> dict[str, Any]:
     """Validate the inventory of already acquired wheel files."""
-    _header(value, "wheelhouse manifest")
+    variant = _header(value, "wheelhouse manifest")
     raw_files = value.get("files")
     if not isinstance(raw_files, list) or not raw_files:
         raise RuntimeLockError("wheelhouse manifest files must be a non-empty list")
@@ -241,7 +256,30 @@ def validate_wheelhouse_manifest(value: Mapping[str, Any]) -> dict[str, Any]:
         files.append({"path": relative, "size_bytes": size, "sha256": digest})
     if value.get("file_count") != len(files):
         raise RuntimeLockError("wheelhouse file_count does not match files")
-    return {"files": files, "file_count": len(files)}
+    return {"files": files, "file_count": len(files), "variant": variant}
+
+
+def render_pip_requirements(value: Mapping[str, Any]) -> str:
+    """Render a locked requirements file that pip verifies by digest.
+
+    Assembly feeds this to ``pip install --require-hashes --no-deps
+    --no-index``. Emitting ``==`` pins with ``--hash`` makes pip enforce the
+    same digests this module checks, so a tampered wheelhouse fails twice
+    rather than relying on our pre-check alone.
+    """
+    checked = validate_requirements_lock(value)
+    lines = [
+        "# Generated from the FigureSmith runtime lock. Do not edit by hand.",
+        f"# variant: {checked['variant']}  packages: {checked['package_count']}",
+        "--no-index",
+        "",
+    ]
+    for package in sorted(checked["packages"], key=lambda item: item["name"].lower()):
+        lines.append(
+            f"{package['name']}=={package['version']} "
+            f"--hash=sha256:{package['sha256']}"
+        )
+    return "\n".join(lines) + "\n"
 
 
 def _sha256_file(path: Path) -> str:
@@ -285,16 +323,49 @@ def verify_wheelhouse_files(
 
 
 def validate_lock_bundle(
-    lock_root: Path | str, *, wheelhouse_root: Path | str | None = None
+    lock_root: Path | str,
+    *,
+    wheelhouse_root: Path | str | None = None,
+    variant: str | None = None,
 ) -> dict[str, Any]:
-    """Validate all committed lock files and optionally their offline cache."""
+    """Validate all committed lock files and optionally their offline cache.
+
+    ``variant`` selects which requirements lock to read. When omitted, any
+    single committed variant is accepted; an ambiguous lock root is an error so
+    a CPU pack can never be assembled from the CUDA lock by accident.
+    """
     root = Path(lock_root).expanduser().resolve()
     if not root.is_dir():
         raise RuntimeLockError(f"lock directory is missing: {root}")
-    requirements = validate_requirements_lock(_read_json(root / REQUIREMENTS_LOCK_NAME))
+    if variant is None:
+        present = [
+            name
+            for name in SUPPORTED_VARIANTS
+            if (root / requirements_lock_name(name)).is_file()
+        ]
+        if not present:
+            raise RuntimeLockError(f"no requirements lock found under {root}")
+        if len(present) > 1:
+            raise RuntimeLockError(
+                "lock root is ambiguous; pass variant explicitly: "
+                + ", ".join(present)
+            )
+        variant = present[0]
+    requirements_path = root / requirements_lock_name(variant)
+    requirements = validate_requirements_lock(_read_json(requirements_path))
     sources = validate_sources_lock(_read_json(root / SOURCES_LOCK_NAME))
     wheelhouse_value = _read_json(root / WHEELHOUSE_MANIFEST_NAME)
     wheelhouse = validate_wheelhouse_manifest(wheelhouse_value)
+    # All three locks must agree on the variant they target.
+    variants = {
+        requirements.get("variant"),
+        sources.get("variant"),
+        wheelhouse.get("variant"),
+    }
+    if variants != {variant}:
+        raise RuntimeLockError(
+            f"lock bundle variants do not match {variant!r}: {sorted(variants)}"
+        )
     result = {**requirements, **sources, **wheelhouse, "lock_root": str(root)}
     if wheelhouse_root is not None:
         result.update(verify_wheelhouse_files(wheelhouse_value, wheelhouse_root))
@@ -305,9 +376,28 @@ def _main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Validate FigureSmith runtime locks")
     parser.add_argument("lock_root", type=Path)
     parser.add_argument("--wheelhouse", type=Path, default=None)
+    parser.add_argument("--variant", choices=SUPPORTED_VARIANTS, default=None)
+    parser.add_argument(
+        "--emit-requirements",
+        type=Path,
+        default=None,
+        help="write a pip --require-hashes requirements file for the variant",
+    )
     args = parser.parse_args(argv)
     try:
-        result = validate_lock_bundle(args.lock_root, wheelhouse_root=args.wheelhouse)
+        result = validate_lock_bundle(
+            args.lock_root,
+            wheelhouse_root=args.wheelhouse,
+            variant=args.variant,
+        )
+        if args.emit_requirements is not None:
+            lock_path = Path(result["lock_root"]) / requirements_lock_name(
+                str(result["variant"])
+            )
+            rendered = render_pip_requirements(_read_json(lock_path))
+            args.emit_requirements.parent.mkdir(parents=True, exist_ok=True)
+            args.emit_requirements.write_text(rendered, encoding="utf-8", newline="\n")
+            result["emitted_requirements"] = str(args.emit_requirements)
     except RuntimeLockError as exc:
         print(f"runtime lock validation failed: {exc}", file=sys.stderr)
         return 2
@@ -320,11 +410,15 @@ if __name__ == "__main__":  # pragma: no cover - CLI smoke is shell-tested
 
 
 __all__ = [
+    "DEFAULT_VARIANT",
     "LOCK_SCHEMA",
     "REQUIREMENTS_LOCK_NAME",
     "SOURCES_LOCK_NAME",
+    "SUPPORTED_VARIANTS",
     "WHEELHOUSE_MANIFEST_NAME",
     "RuntimeLockError",
+    "render_pip_requirements",
+    "requirements_lock_name",
     "validate_lock_bundle",
     "validate_requirements_lock",
     "validate_sources_lock",

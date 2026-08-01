@@ -50,7 +50,10 @@ _DEFAULT_DEPENDENCIES = (
 
 
 def _load_dependency_contract() -> list[dict[str, str]]:
-    path = Path(__file__).with_name("dependencies.json")
+    # The contract ships in figuresmith/runtime/, not next to this module. The
+    # desktop resolver reads the same file (sidecar.rs bootstrap_imports), so a
+    # silent fallback here would make the two halves disagree about scope.
+    path = Path(__file__).resolve().parent.parent / "runtime" / "dependencies.json"
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         packages = data.get("packages")
@@ -64,10 +67,32 @@ def _load_dependency_contract() -> list[dict[str, str]]:
                 and isinstance(item.get("scope"), str)
                 and isinstance(item.get("requirement"), str)
             ]
+            if len(valid) != len(packages):
+                # The desktop resolver only requires distribution/import/scope,
+                # so an entry missing "requirement" would be honoured there and
+                # dropped here. Surface the drift instead of diverging quietly.
+                logger.warning(
+                    "dependency contract at %s has %d entries but only %d are "
+                    "complete; incomplete entries are ignored here while the "
+                    "desktop resolver may still honour them",
+                    path,
+                    len(packages),
+                    len(valid),
+                )
             if valid:
                 return valid
+        logger.warning(
+            "dependency contract at %s has no usable packages; "
+            "falling back to the built-in bootstrap subset",
+            path,
+        )
     except (OSError, json.JSONDecodeError, TypeError):
-        pass
+        logger.warning(
+            "dependency contract is unreadable at %s; "
+            "falling back to the built-in bootstrap subset",
+            path,
+            exc_info=True,
+        )
     return [dict(item) for item in _DEFAULT_DEPENDENCIES]
 
 

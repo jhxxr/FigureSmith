@@ -71,14 +71,43 @@ MSYS2 filenames drift — 8 of 12 hand-written pins were already stale. Use
 
 ## Stage 4 — Manifest schema 2
 
-- [ ] Bump `MANIFEST_SCHEMA` to 2; add `variant`, `python`, `locks`; delete the
+- [x] Bump `MANIFEST_SCHEMA` to 2; add `variant`, `python`, `locks`; delete the
       `application_only`/`python_required` assertions and their schema-1
       branches.
-- [ ] Allow the `python/` tree in `_iter_runtime_files`; keep `.whl` forbidden
+- [x] Allow the `python/` tree in `_iter_runtime_files`; keep `.whl` forbidden
       in the shipped pack.
-- [ ] Update `tests/test_runtime_manifest.py` for schema 2.
+- [x] Update `tests/test_runtime_manifest.py` for schema 2.
 
 Validation: `python -m pytest tests/test_runtime_manifest.py -q`.
+
+Done. `require_complete` is gone — a schema 2 manifest is self-contained by
+definition, so the flag had one legal value. `runtime_complete=True`,
+`variant`, and `python.version` are now asserted, and a schema 1 manifest is
+refused outright.
+
+Weight detection is scoped to `python/Lib/site-packages` via the
+`site_packages_root` parameter added in Stage 1, so an installed package's
+`.pth` hooks and non-model `.bin` payload ship while a checkpoint is still
+refused anywhere in the pack. `__pycache__` remains forbidden: `.pyc` files
+embed absolute source paths and mtimes, so shipping them would break
+reproducibility and contradict `contains_cache=false`. Assembly must strip them.
+
+### Known breakage carried into Stage 5
+
+`build-runtime.ps1:122,171` still calls `write_runtime_manifest(...,
+runtime_complete=False)`, which now raises `TypeError`. The script is broken
+until Stage 5 rewrites it. Verified directly rather than assumed.
+
+**No test caught this.** `test_runtime_release_workflow_contract.py` and
+`test_desktop_packaging_contract.py` assert on the *text* of the `.ps1`/`.yml`
+files, not on whether the calls they contain still work, so 305 tests pass over
+a build script that cannot run. The root cause is that manifest generation is
+embedded as Python source inside PowerShell `-c` strings, which no type checker
+or test can see.
+
+Stage 5 should move manifest generation into a real Python entry point invoked
+with plain arguments, which removes this entire class of invisible breakage
+rather than re-creating it in a new script.
 
 ## Stage 5 — Offline assembly
 

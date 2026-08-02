@@ -1,9 +1,12 @@
-"""Generate and verify the immutable FigureSmith application pack manifest.
+"""Generate and verify the immutable FigureSmith runtime pack manifest.
 
-The desktop distribution contains application code and dependency guidance,
-not CPython, PyTorch, CUDA wheels, model weights, or user data.  This module
-keeps that boundary explicit while retaining a complete file inventory for
-build and release verification.
+Runtime V1 ships a complete interpreter: CPython plus a pre-installed
+``site-packages`` tree, the application, and the native libraries the
+application dlopens.  It does not ship model weights, caches, user data, or
+loose wheels — wheels are a build input, not a shipped artifact.
+
+The manifest is the immutable inventory of that pack, and the boundary it
+enforces is "everything needed to run, nothing that mutates".
 """
 
 from __future__ import annotations
@@ -19,13 +22,21 @@ from typing import Any, Iterable, Mapping
 from figuresmith.runtime.packaging import is_weight_file
 
 MANIFEST_NAME = "runtime-manifest.json"
-MANIFEST_SCHEMA = 1
+MANIFEST_SCHEMA = 2
+SUPPORTED_VARIANTS = ("cpu", "cu128")
 REQUIRED_FILES = (
     "app/backend/main.py",
     "app/vendor/autofigure_edit/server.py",
 )
-# Kept for callers that still ask whether an old embedded runtime was complete.
-PYTHON_FILES = ("python.exe", "python/python.exe")
+# A self-contained pack must carry its own interpreter.
+PYTHON_FILES = ("python/python.exe",)
+# The interpreter's site-packages tree, relative to the pack root. Weight
+# detection is scoped to this directory so an installed package's .pth import
+# hooks and non-model .bin payload ship, while a real checkpoint never does.
+SITE_PACKAGES_DIR = "python/Lib/site-packages"
+# __pycache__ stays forbidden even though pip generates it: .pyc files embed
+# absolute source paths and mtimes, so shipping them would make the manifest
+# non-reproducible and contradict contains_cache=false. Assembly strips them.
 _FORBIDDEN_DIR_NAMES = {
     ".git",
     ".mypy_cache",
@@ -68,22 +79,19 @@ def _relative_path(root: Path, path: Path) -> str:
 def _forbidden_reason(root: Path, path: Path) -> str | None:
     relative = path.relative_to(root)
     parts = [part.lower() for part in relative.parts]
-    if is_weight_file(path):
+    # Weight detection is scoped to the shipped site-packages tree so that an
+    # installed package's .pth hooks and non-model .bin payload are allowed
+    # there, while a checkpoint anywhere in the pack is still refused.
+    if is_weight_file(path, site_packages_root=root / SITE_PACKAGES_DIR):
         return "weight-like file"
     if any(part in _FORBIDDEN_DIR_NAMES for part in parts):
         return "cache, build, or mutable-data directory"
     if len(parts) >= 3 and parts[:3] == ["app", "resources", "models"]:
         return "model staging directory"
-    if (
-        relative.as_posix().lower().startswith("python/")
-        or relative.name.lower() == "python.exe"
-        or (
-            relative.name.lower().startswith("python")
-            and relative.suffix.lower() == ".dll"
-        )
-        or relative.suffix.lower() == ".whl"
-    ):
-        return "embedded Python or dependency artifact"
+    # Wheels are a build input consumed during assembly. Shipping them would
+    # double the pack size and let a user pip-install a second, unlocked set.
+    if relative.suffix.lower() == ".whl":
+        return "loose wheel (build input, not a shipped artifact)"
     return None
 
 
@@ -132,16 +140,26 @@ def build_runtime_manifest(
     root: Path | str,
     *,
     version: str,
+    variant: str,
+    python_version: str,
     platform: str = "Windows",
     arch: str = "x86_64",
-    runtime_complete: bool = False,
+    locks: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Build a deterministic manifest for an application-only pack."""
-    application_root = _root_dir(root)
-    files = _iter_runtime_files(application_root)
+    """Build a deterministic manifest for a self-contained runtime pack."""
+    if variant not in SUPPORTED_VARIANTS:
+        raise RuntimeManifestError(
+            f"unsupported runtime variant: {variant!r}; "
+            f"expected one of {', '.join(SUPPORTED_VARIANTS)}"
+        )
+    if not isinstance(python_version, str) or not python_version.strip():
+        raise RuntimeManifestError("python_version is required")
+
+    runtime_root = _root_dir(root)
+    files = _iter_runtime_files(runtime_root)
     entries = [
         {
-            "path": _relative_path(application_root, path),
+            "path": _relative_path(runtime_root, path),
             "size_bytes": path.stat().st_size,
             "sha256": _sha256_file(path),
         }
@@ -149,42 +167,47 @@ def build_runtime_manifest(
     ]
     listed_paths = [entry["path"] for entry in entries]
     missing = [name for name in REQUIRED_FILES if name not in listed_paths]
-    if runtime_complete and not _has_required_file(listed_paths, PYTHON_FILES):
-        missing.append("python.exe or python/python.exe")
+    if not _has_required_file(listed_paths, PYTHON_FILES):
+        missing.append(" or ".join(PYTHON_FILES))
     if missing:
         raise RuntimeManifestError(
-            "application pack is missing required files: " + ", ".join(missing)
+            "runtime pack is missing required files: " + ", ".join(missing)
         )
 
-    return {
+    payload: dict[str, Any] = {
         "schema": MANIFEST_SCHEMA,
         "product": "FigureSmith",
         "version": str(version),
+        "variant": variant,
         "platform": str(platform),
         "arch": str(arch),
-        "application_only": not bool(runtime_complete),
-        "python_required": "embedded" if runtime_complete else "external",
-        "runtime_complete": bool(runtime_complete),
+        "python": {"version": str(python_version)},
+        "runtime_complete": True,
         "contains_weights": False,
         "contains_cache": False,
         "file_count": len(entries),
         "files": entries,
     }
+    if locks:
+        payload["locks"] = {str(key): str(value) for key, value in sorted(locks.items())}
+    return payload
 
 
 def write_runtime_manifest(
     root: Path | str,
     *,
     version: str,
+    variant: str,
+    python_version: str,
     platform: str = "Windows",
     arch: str = "x86_64",
-    runtime_complete: bool = False,
+    locks: Mapping[str, str] | None = None,
     output: Path | str | None = None,
 ) -> Path:
-    """Write an application manifest atomically and return its canonical path."""
-    application_root = _root_dir(root)
+    """Write a runtime manifest atomically and return its canonical path."""
+    runtime_root = _root_dir(root)
     output_path = (
-        application_root / MANIFEST_NAME
+        runtime_root / MANIFEST_NAME
         if output is None
         else Path(output).expanduser().resolve()
     )
@@ -192,14 +215,16 @@ def write_runtime_manifest(
         raise RuntimeManifestError(
             f"runtime manifest must be named {MANIFEST_NAME}: {output_path}"
         )
-    if output_path != application_root / MANIFEST_NAME:
-        raise RuntimeManifestError("runtime manifest must live at the application root")
+    if output_path != runtime_root / MANIFEST_NAME:
+        raise RuntimeManifestError("runtime manifest must live at the runtime root")
     payload = build_runtime_manifest(
-        application_root,
+        runtime_root,
         version=version,
+        variant=variant,
+        python_version=python_version,
         platform=platform,
         arch=arch,
-        runtime_complete=runtime_complete,
+        locks=locks,
     )
     encoded = json.dumps(payload, ensure_ascii=True, indent=2, sort_keys=True) + "\n"
     temporary: Path | None = None
@@ -241,15 +266,25 @@ def _manifest_relative_path(value: Any) -> str:
     return path.as_posix()
 
 
-def _validate_manifest_shape(
-    manifest: Mapping[str, Any], *, require_complete: bool
-) -> list[dict[str, Any]]:
+def _validate_manifest_shape(manifest: Mapping[str, Any]) -> list[dict[str, Any]]:
     if manifest.get("schema") != MANIFEST_SCHEMA:
         raise RuntimeManifestError("unsupported runtime manifest schema")
     if manifest.get("product") != "FigureSmith":
         raise RuntimeManifestError("runtime manifest product is not FigureSmith")
     if not isinstance(manifest.get("version"), str) or not manifest["version"].strip():
         raise RuntimeManifestError("runtime manifest version is missing")
+    if manifest.get("variant") not in SUPPORTED_VARIANTS:
+        raise RuntimeManifestError(
+            "runtime manifest variant must be one of "
+            + ", ".join(SUPPORTED_VARIANTS)
+        )
+    python = manifest.get("python")
+    if not isinstance(python, Mapping) or not str(python.get("version", "")).strip():
+        raise RuntimeManifestError("runtime manifest python.version is missing")
+    if manifest.get("runtime_complete") is not True:
+        raise RuntimeManifestError(
+            "runtime manifest does not declare a self-contained runtime"
+        )
     if manifest.get("contains_weights") is not False:
         raise RuntimeManifestError(
             "runtime manifest does not prove contains_weights=false"
@@ -258,19 +293,15 @@ def _validate_manifest_shape(
         raise RuntimeManifestError(
             "runtime manifest does not prove contains_cache=false"
         )
-    if require_complete and manifest.get("runtime_complete") is not True:
-        raise RuntimeManifestError(
-            "runtime manifest is not a complete embedded runtime"
+    locks = manifest.get("locks")
+    if locks is not None and (
+        not isinstance(locks, Mapping)
+        or not all(
+            isinstance(key, str) and isinstance(value, str)
+            for key, value in locks.items()
         )
-    if not require_complete:
-        if manifest.get("application_only") is not True:
-            raise RuntimeManifestError(
-                "runtime manifest is not an application-only user-environment pack"
-            )
-        if manifest.get("python_required") != "external":
-            raise RuntimeManifestError(
-                "runtime manifest does not declare external Python"
-            )
+    ):
+        raise RuntimeManifestError("runtime manifest locks must map name to digest")
 
     raw_files = manifest.get("files")
     if not isinstance(raw_files, list):
@@ -300,8 +331,8 @@ def _validate_manifest_shape(
     if manifest.get("file_count") != len(entries):
         raise RuntimeManifestError("runtime manifest file_count does not match files")
     missing = [name for name in REQUIRED_FILES if name not in paths]
-    if require_complete and not _has_required_file(paths, PYTHON_FILES):
-        missing.append("python.exe or python/python.exe")
+    if not _has_required_file(paths, PYTHON_FILES):
+        missing.append(" or ".join(PYTHON_FILES))
     if missing:
         raise RuntimeManifestError(
             "runtime manifest is missing required files: " + ", ".join(missing)
@@ -312,10 +343,8 @@ def _validate_manifest_shape(
 def verify_runtime_manifest(
     manifest_path: Path | str,
     runtime_root: Path | str | None = None,
-    *,
-    require_complete: bool = False,
 ) -> dict[str, Any]:
-    """Verify manifest metadata and every application file hash."""
+    """Verify manifest metadata and every shipped file hash."""
     manifest_file = Path(manifest_path).expanduser().resolve()
     if manifest_file.name != MANIFEST_NAME:
         raise RuntimeManifestError(f"unexpected runtime manifest name: {manifest_file}")
@@ -327,7 +356,7 @@ def verify_runtime_manifest(
         ) from exc
     if not isinstance(manifest, Mapping):
         raise RuntimeManifestError("runtime manifest must be a JSON object")
-    entries = _validate_manifest_shape(manifest, require_complete=require_complete)
+    entries = _validate_manifest_shape(manifest)
 
     if runtime_root is None:
         runtime_root_path = manifest_file.parent
@@ -335,7 +364,7 @@ def verify_runtime_manifest(
         runtime_root_path = _root_dir(runtime_root)
     expected_manifest = runtime_root_path / MANIFEST_NAME
     if manifest_file != expected_manifest:
-        raise RuntimeManifestError("runtime manifest must live at the application root")
+        raise RuntimeManifestError("runtime manifest must live at the runtime root")
 
     actual_files = _iter_runtime_files(runtime_root_path)
     actual_by_path = {
@@ -366,7 +395,10 @@ def verify_runtime_manifest(
 __all__ = [
     "MANIFEST_NAME",
     "MANIFEST_SCHEMA",
+    "PYTHON_FILES",
     "REQUIRED_FILES",
+    "SITE_PACKAGES_DIR",
+    "SUPPORTED_VARIANTS",
     "RuntimeManifestError",
     "build_runtime_manifest",
     "verify_runtime_manifest",

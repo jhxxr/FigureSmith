@@ -28,7 +28,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "resources": ["runtime"],
+    "resources": [],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -42,7 +42,7 @@
         "type": "downloadBootstrapper"
       }
     },
-    "longDescription": "FigureSmith (图匠) local-first scientific figure desktop shell with an isolated per-user Python environment created from a user-installed base Python. The sidecar binds to 127.0.0.1 only; Python, model dependencies, and model weights are not bundled.",
+    "longDescription": "FigureSmith (图匠) local-first scientific figure desktop shell. Installed bundles locate a verified companion Runtime V1 pack beside the application; portable distributions carry that self-contained runtime. Model weights remain external and user-imported.",
     "shortDescription": "FigureSmith desktop shell",
     "category": "Productivity"
   },

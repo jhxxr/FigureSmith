@@ -44,43 +44,43 @@ $RuntimeRoot = if ([string]::IsNullOrWhiteSpace($RuntimeRoot)) {
     (Resolve-Path $RuntimeRoot).Path
 }
 
-function Assert-ApplicationRuntime([string]$Root) {
+function Assert-RuntimeV1([string]$Root) {
     if (-not (Test-Path $Root -PathType Container)) {
-        throw "Application runtime directory is missing: $Root"
+        throw "Runtime V1 directory is missing: $Root"
     }
     $manifestPath = Join-Path $Root "runtime-manifest.json"
     if (-not (Test-Path $manifestPath -PathType Leaf)) {
-        throw "Application runtime manifest is missing: $manifestPath"
+        throw "Runtime V1 manifest is missing: $manifestPath"
     }
+
+    # Use the runtime's embedded interpreter and the canonical Python manifest
+    # verifier. This checks schema-2 metadata, every inventoried path/size/hash,
+    # required locks and entry points, extra files, symlinks, and content policy.
+    $python = Join-Path $Root "python\python.exe"
+    $backend = Join-Path $Root "app\backend"
+    $verify = "import sys; sys.path.insert(0, sys.argv[1]); from figuresmith.runtime.manifest import verify_runtime_manifest; verify_runtime_manifest(sys.argv[2], sys.argv[3])"
+    if (-not (Test-Path $python -PathType Leaf)) {
+        throw "Runtime V1 embedded interpreter is missing: $python"
+    }
+    & $python -B -c $verify $backend $manifestPath $Root
+    if ($LASTEXITCODE -ne 0) {
+        throw "Runtime V1 manifest verification failed: $Root"
+    }
+
     $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
-    if ($manifest.product -ne "FigureSmith" -or $manifest.application_only -ne $true) {
-        throw "Desktop packaging requires application_only=true for FigureSmith"
+    if ($manifest.version -ne $Version) {
+        throw "Runtime V1 version does not match desktop version $Version"
     }
-    if ($manifest.python_required -ne "external" -or $manifest.runtime_complete -ne $false) {
-        throw "Desktop packaging must declare user-managed Python"
-    }
-    foreach ($relative in @(
-        "app\backend\main.py",
-        "app\vendor\autofigure_edit\server.py",
-        "app\backend\figuresmith\runtime\dependencies.json",
-        "requirements-runtime.txt",
-        "requirements-bootstrap.txt",
-        "requirements-models.txt"
-    )) {
-        $path = Join-Path $Root $relative
-        if (-not (Test-Path $path -PathType Leaf)) { throw "Application runtime file is missing: $path" }
-    }
-    $embedded = Get-ChildItem -LiteralPath $Root -Recurse -File | Where-Object {
-        $_.Name -ieq "python.exe" -or $_.Name -like "python*.dll" -or $_.Extension -ieq ".whl"
-    }
-    if ($embedded) { throw "Application runtime contains Python or dependency artifacts: $($embedded.FullName -join ', ')" }
 }
-Write-Host "Using application pack with user-managed Python: $RuntimeRoot" -ForegroundColor DarkGreen
+Assert-RuntimeV1 $RuntimeRoot
+Write-Host "Using self-contained Runtime V1 companion pack: $RuntimeRoot" -ForegroundColor DarkGreen
+
+# NSIS/MSI build only the shell. The multi-gigabyte runtime is deliberately not
+# a Tauri resource; installed shells locate a separately delivered companion
+# `runtime` directory beside the executable. Portable assembly below carries it.
 $TauriSourceRuntime = Join-Path $Desktop "src-tauri\runtime"
-if ((Resolve-Path $RuntimeRoot).Path -ne ([System.IO.Path]::GetFullPath($TauriSourceRuntime))) {
-    if (Test-Path $TauriSourceRuntime) { Remove-Item $TauriSourceRuntime -Recurse -Force }
-    Copy-Item $RuntimeRoot $TauriSourceRuntime -Recurse -Force
-}
+if (Test-Path $TauriSourceRuntime) { Remove-Item $TauriSourceRuntime -Recurse -Force }
+
 
 if (-not $SkipBuild) {
     $Node = Get-Command node -ErrorAction SilentlyContinue
@@ -108,14 +108,13 @@ if (-not $SkipBuild) {
     Write-Host "SkipBuild: reusing existing Tauri target if present" -ForegroundColor Yellow
 }
 
-# Tauri copies bundle.resources into target/release/resources. Keep this check
-# fail-closed: an installer without the application pack would only fail after launch.
+# The installed shell intentionally has no embedded runtime. It fails closed
+# until the separately delivered companion `runtime` directory is installed
+# beside FigureSmith.exe. Portable assembly carries the selected full variant.
 $TauriResources = Join-Path $TauriTarget "resources"
-$TauriRuntime = Join-Path $TauriResources "runtime"
-if (Test-Path $TauriRuntime) { Remove-Item $TauriRuntime -Recurse -Force }
-New-Item -ItemType Directory -Path $TauriResources -Force | Out-Null
-Copy-Item $RuntimeRoot $TauriRuntime -Recurse -Force
-Assert-ApplicationRuntime $TauriRuntime
+if (Test-Path (Join-Path $TauriResources "runtime")) {
+    Remove-Item (Join-Path $TauriResources "runtime") -Recurse -Force
+}
 
 # Collect bundle artifacts
 $copied = @()
@@ -147,6 +146,14 @@ if (Test-Path $BundleDir) {
 # directory is not a publishable desktop artifact.
 $portableName = "FigureSmith-Portable-x64-$Version"
 $portableDir = Join-Path $distDesktop $portableName
+# Remove an old display directory through a short name before touching the deep
+# runtime tree. New builds publish only the ZIP, never this expanded directory.
+if (Test-Path $portableDir) {
+    $oldPortableTrash = Join-Path $distDesktop ".trash-old-$PID"
+    if (Test-Path $oldPortableTrash) { Remove-Item -LiteralPath $oldPortableTrash -Recurse -Force }
+    Move-Item -LiteralPath $portableDir -Destination $oldPortableTrash
+    Remove-Item -LiteralPath $oldPortableTrash -Recurse -Force
+}
 # Prefer release exe if present
 $releaseExe = Join-Path $TauriTarget "FigureSmith.exe"
 if (-not (Test-Path $releaseExe)) {
@@ -162,50 +169,71 @@ if (-not (Test-Path $releaseExe -PathType Leaf)) {
     throw "No FigureSmith release executable found under $TauriTarget; refusing to create a placeholder Portable artifact."
 }
 
-if (Test-Path $portableDir) { Remove-Item -Recurse -Force $portableDir }
-New-Item -ItemType Directory -Path $portableDir | Out-Null
+$portableStage = Join-Path $distDesktop ".portable-stage-$PID"
+$portableZip = Join-Path $distDesktop "$portableName.zip"
+$portableZipStage = "$portableZip.partial"
+$portablePublished = $false
 
-foreach ($f in @("LICENSE", "NOTICE.md", "THIRD_PARTY_NOTICES.md", "README.md", "README_ZH.md", "VERSION", "CHANGELOG.md")) {
-    $src = Join-Path $RepoRoot $f
-    if (Test-Path $src) { Copy-Item $src (Join-Path $portableDir $f) -Force }
+foreach ($path in @($portableStage, $portableZipStage)) {
+    if (Test-Path $path) { Remove-Item -LiteralPath $path -Recurse -Force }
 }
+if (Test-Path $portableZip) { Remove-Item -LiteralPath $portableZip -Force }
 
-Copy-Item $releaseExe (Join-Path $portableDir "FigureSmith.exe") -Force
-Write-Host "Included FigureSmith.exe in portable pack"
+try {
+    New-Item -ItemType Directory -Path $portableStage | Out-Null
 
-# The packaged Tauri resource directory contains application code and the
-# dependency contract. The executable creates/uses a separate user environment
-# from a supported base Python; it never writes packages into that base.
-Copy-Item $TauriResources (Join-Path $portableDir "resources") -Recurse -Force
-Assert-ApplicationRuntime (Join-Path $portableDir "resources\runtime")
+    foreach ($f in @("LICENSE", "NOTICE.md", "THIRD_PARTY_NOTICES.md", "README.md", "README_ZH.md", "VERSION", "CHANGELOG.md")) {
+        $src = Join-Path $RepoRoot $f
+        if (Test-Path $src) { Copy-Item $src (Join-Path $portableStage $f) -Force }
+    }
 
-@"
+    Copy-Item $releaseExe (Join-Path $portableStage "FigureSmith.exe") -Force
+    Write-Host "Included FigureSmith.exe in portable pack"
+
+    # Keep the 4.5 GiB Torch tree under a short staging root for every recursive
+    # operation. robocopy handles long Windows paths more reliably than
+    # Copy-Item -Recurse; its success exit codes are 0 through 7.
+    $portableRuntime = Join-Path $portableStage "runtime"
+    New-Item -ItemType Directory -Path $portableRuntime | Out-Null
+    & robocopy.exe $RuntimeRoot $portableRuntime /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 /XJ /NFL /NDL /NJH /NJS /NP
+    if ($LASTEXITCODE -gt 7) {
+        throw "Runtime V1 copy failed with robocopy exit code $LASTEXITCODE"
+    }
+    Assert-RuntimeV1 $portableRuntime
+
+    @"
 # FigureSmith Portable
 
 - Product: FigureSmith / 图匠
 - Version: $Version
-- The target machine supplies a supported Python 3.10-3.12 base. FigureSmith creates its isolated environment under `%LOCALAPPDATA%\FigureSmith\python-env` and installs bootstrap packages there without modifying the base Python.
-- Model packages remain optional; the welcome page reports their status and provides a command for the isolated environment.
+- This Portable archive includes a self-contained Runtime V1 pack. FigureSmith uses only `runtime\python\python.exe`; no system Python, pip, venv creation, or network installation is used.
+- Python packages are preinstalled and verified before launch. Model weights remain external and are imported through the app.
 - Import SAM3/RMBG model weights in the app.
 - Backend must bind 127.0.0.1 only (desktop sidecar enforces this).
 
 See docs in the full repository: docs/phase6-delivery.md, docs/release.md
-"@ | Set-Content (Join-Path $portableDir "README-PORTABLE.md") -Encoding utf8
+"@ | Set-Content (Join-Path $portableStage "README-PORTABLE.md") -Encoding utf8
 
-$portableZip = Join-Path $distDesktop "$portableName.zip"
-if (Test-Path $portableZip) { Remove-Item $portableZip -Force }
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-[System.IO.Compression.ZipFile]::CreateFromDirectory($portableDir, $portableZip)
-Write-Host "Portable zip: $portableZip" -ForegroundColor Green
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [System.IO.Compression.ZipFile]::CreateFromDirectory($portableStage, $portableZipStage)
+    Move-Item -LiteralPath $portableZipStage -Destination $portableZip
+    Write-Host "Portable zip: $portableZip" -ForegroundColor Green
 
-# Refuse weight contamination in dist-desktop tree
-$bad = Get-ChildItem -Path $distDesktop -Recurse -File -ErrorAction SilentlyContinue | Where-Object {
-    $_.Extension.ToLowerInvariant() -in @(".pt", ".pth", ".onnx", ".safetensors", ".gguf", ".ckpt", ".h5", ".pb", ".bin")
+    & (Join-Path $PSScriptRoot "write-checksums.ps1") -Path $distDesktop -OutFile (Join-Path $distDesktop "checksums.txt")
+    $portablePublished = $true
+} finally {
+    if (Test-Path $portableStage) {
+        # Rename to an even shorter path before recursive deletion so cleanup
+        # does not strand deep Torch license paths.
+        $trash = Join-Path $distDesktop ".trash-$PID"
+        if (Test-Path $trash) { Remove-Item -LiteralPath $trash -Recurse -Force }
+        Move-Item -LiteralPath $portableStage -Destination $trash
+        Remove-Item -LiteralPath $trash -Recurse -Force
+    }
+    if (Test-Path $portableZipStage) { Remove-Item -LiteralPath $portableZipStage -Force }
+    if (-not $portablePublished -and (Test-Path $portableZip)) {
+        Remove-Item -LiteralPath $portableZip -Force
+    }
 }
-if ($bad) {
-    Write-Error "Weight-like files in dist-desktop:`n$($bad.FullName -join "`n")"
-}
-
-& (Join-Path $PSScriptRoot "write-checksums.ps1") -Path $distDesktop -OutFile (Join-Path $distDesktop "checksums.txt")
 
 Write-Host "Desktop packaging done -> $distDesktop" -ForegroundColor Green

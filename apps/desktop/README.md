@@ -15,21 +15,19 @@ The Tauri process:
 
 | Tool | Notes |
 |------|--------|
-| **Rust** | `rustup` + `cargo` (MSVC toolchain on Windows) |
-| **Node.js** | 20+ with `npm` |
+| **Rust** | `rustup` + `cargo` (MSVC toolchain on Windows; development/build only) |
+| **Node.js** | 20+ with `npm` (development/build only) |
 | **WebView2** | Preinstalled on modern Windows 11; bootstrapper used if missing |
-| **Python base** | User-installed Python 3.10-3.12; desktop scans available installations and uses one only to create the isolated FigureSmith environment |
-| **Managed environment** | `%LOCALAPPDATA%\FigureSmith\python-env` by default; bootstrap packages are installed here, never into the base Python |
+| **Runtime V1** | Installed shells require a verified companion `runtime` directory beside `FigureSmith.exe`; Portable carries the complete selected CPU/cu128 runtime |
 
 Optional env:
 
 | Variable | Purpose |
 |----------|---------|
-| `FIGURESMITH_PYTHON` | Optional absolute path to the base Python used to create the isolated environment |
-| `FIGURESMITH_MANAGED_PYTHON_DIR` | Optional isolated environment directory; defaults to `%LOCALAPPDATA%\FigureSmith\python-env` |
-| `FIGURESMITH_REPO_ROOT` | Override monorepo root detection |
-| `FIGURESMITH_DATA_DIR` | Explicit app data root (forwarded to sidecar; must be writable) |
-| `FIGURESMITH_DEV_MODE` | Explicit source-development mode; repository data is never inferred in release mode |
+| `FIGURESMITH_PYTHON` | Development-only explicit Python override; ignored by release Runtime V1 resolution |
+| `FIGURESMITH_REPO_ROOT` | Development-only monorepo root override |
+| `FIGURESMITH_DATA_DIR` | Explicit writable app-data root forwarded to the sidecar |
+| `FIGURESMITH_DEV_MODE` | Explicit source-development mode; release never falls back to repository/system Python |
 
 ## Develop
 
@@ -54,13 +52,17 @@ npm run tauri -- dev
 # or: npm run tauri -- build
 ```
 
-Release packaging includes application code and dependency guidance only. It does not bundle Python, pip, PyTorch, CUDA, SAM3, or model weights. On first launch the desktop selects a supported user-installed Python as a base, creates a dedicated environment under LocalAppData, and installs only the bootstrap service packages there. Model packages remain optional and are reported in the welcome page.
+Release Setup artifacts contain the desktop shell and fail closed until a verified
+schema-2 Runtime V1 companion is installed beside `FigureSmith.exe`. Portable
+artifacts carry that complete runtime: embedded CPython 3.12, hash-locked
+site-packages, and native DLLs. No target-machine pip, venv creation, system
+Python, or online dependency installation is used. Model weights remain external
+and are imported through the Models page.
 
 ## Tauri commands
 
 | Command | Role |
 |---------|------|
-| `prepare_managed_python_environment` | One-click creation/repair of the isolated user environment, then restart |
 | `import_sam3_model` | Native file picker → `POST /api/models/sam3/import` |
 | `import_rmbg_archive` | ZIP picker → RMBG import |
 | `import_rmbg_folder` | Folder picker → RMBG import |

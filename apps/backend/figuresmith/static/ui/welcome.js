@@ -10,7 +10,7 @@
       tagline: "Local scientific figure desktop",
       eyebrow: "A local figure workspace",
       title: "Welcome to FigureSmith",
-      subtitle: "Check the selected Python environment, then bring in local model files when you are ready.",
+      subtitle: "Verify the packaged runtime, then bring in local model weights when you are ready.",
       start: "Check readiness",
       skip: "Do this later",
       goto_create: "Go to Create",
@@ -19,7 +19,7 @@
       skip_step: "Skip step",
       finish: "Finish",
       step_env: "Environment",
-      step_env_copy: "FigureSmith uses your Python installation. Check the service packages first, then review model packages and GPU support.",
+      step_env_copy: "FigureSmith uses its verified Runtime V1 interpreter and preinstalled packages. Review model weights and GPU support here.",
       step_sam3: "Import SAM3",
       step_sam3_copy: "Import a local SAM3 checkpoint. Remote model downloads are not offered.",
       step_rmbg: "Import RMBG",
@@ -58,15 +58,13 @@
       gpu: "GPU",
       models: "Model files",
       dependencies: "Environment packages",
-      dependency_title: "User-managed Python environment",
-      install_hint: "Install the missing packages in the selected environment:",
-      copy_command: "Copy install command",
-      copied: "Copied",
-      external_python: "Using the isolated FigureSmith environment",
-      environment: "Environment",
-      environment_path: "Environment path",
-      isolated_environment: "Isolated user environment",
-      base_python: "Existing Python is used only as the base",
+      dependency_title: "Packaged Runtime V1",
+      install_hint: "Runtime packages are preinstalled; import model weights separately:",
+      external_python: "Using packaged Runtime V1",
+      environment: "Runtime",
+      environment_path: "Interpreter path",
+      isolated_environment: "Packaged isolated interpreter",
+      base_python: "Packaged interpreter",
       refresh_failed: "Status refresh failed",
       no_missing: "No missing packages detected",
       sam3_install_hint: "SAM3 is installed separately from its upstream project after the model packages are ready.",
@@ -79,7 +77,7 @@
       tagline: "本地科研插图桌面端",
       eyebrow: "本地科研插图工作台",
       title: "欢迎使用 FigureSmith / 图匠",
-      subtitle: "先确认已选 Python 环境，再按需导入本地模型文件。",
+      subtitle: "先验证内置 Runtime V1，再按需导入本地模型权重。",
       start: "检查环境",
       skip: "稍后处理",
       goto_create: "进入创建",
@@ -88,7 +86,7 @@
       skip_step: "跳过此步",
       finish: "完成",
       step_env: "运行环境",
-      step_env_copy: "FigureSmith 使用你本机的 Python。先检查服务包，再查看模型包和 GPU 支持。",
+      step_env_copy: "FigureSmith 使用经过校验的 Runtime V1 解释器和预装依赖。可在此查看模型权重与 GPU 支持。",
       step_sam3: "导入 SAM3",
       step_sam3_copy: "导入本地 SAM3 权重。不提供远程模型下载。",
       step_rmbg: "导入 RMBG",
@@ -127,15 +125,13 @@
       gpu: "GPU",
       models: "模型文件",
       dependencies: "环境包",
-      dependency_title: "用户管理的 Python 环境",
-      install_hint: "请在当前选中的环境中安装缺少的包：",
-      copy_command: "复制安装命令",
-      copied: "已复制",
-      external_python: "使用 FigureSmith 独立环境",
-      environment: "环境",
-      environment_path: "环境目录",
-      isolated_environment: "用户目录中的独立环境",
-      base_python: "现有 Python 仅作为创建基座",
+      dependency_title: "内置 Runtime V1",
+      install_hint: "运行时依赖已预装；模型权重需要单独导入：",
+      external_python: "使用内置 Runtime V1",
+      environment: "运行时",
+      environment_path: "解释器路径",
+      isolated_environment: "内置隔离解释器",
+      base_python: "内置解释器",
       refresh_failed: "刷新状态失败",
       no_missing: "未发现缺少的包",
       sam3_install_hint: "模型包就绪后，还需要根据模型版本从 SAM3 上游项目单独安装。",
@@ -355,8 +351,8 @@
     var grid = document.createElement("div");
     grid.className = "fs-status-detail";
     appendKv(grid, t("python"), s.python || "?");
-    appendKv(grid, t("environment"), deps.managed_environment ? t("isolated_environment") : t("base_python"));
-    appendKv(grid, t("environment_path"), deps.managed_environment_root || "?");
+    appendKv(grid, t("environment"), "Runtime V1 (" + (deps.variant || "packaged") + ")");
+    appendKv(grid, t("environment_path"), s.python_executable || "?");
     appendKv(grid, "Executable", s.python_executable || "?");
     appendKv(grid, "Service", state.bootstrapReady ? t("python_ready") : t("python_missing"));
     appendKv(grid, t("gpu"), s.gpu_available ? s.gpu_name || t("gpu_ok") : t("gpu_missing"));
@@ -378,7 +374,9 @@
     } else {
       var copy = document.createElement("p");
       copy.className = "fs-muted";
-      copy.textContent = t("install_hint");
+      copy.textContent = FS.getLocale() === "zh"
+        ? "运行时包已预装依赖。缺少的模型权重请通过模型导入功能添加。"
+        : "Runtime dependencies are preinstalled. Add missing model weights with the model import actions.";
       panel.appendChild(copy);
       var list = document.createElement("div");
       list.className = "fs-missing-list";
@@ -389,28 +387,12 @@
         list.appendChild(item);
       });
       panel.appendChild(list);
-      var command = document.createElement("code");
-      command.className = "fs-command";
-      command.textContent = deps.install_command || "python -m pip install -r requirements-runtime.txt";
-      panel.appendChild(command);
       if (state.missingModels.indexOf("sam3") !== -1) {
         var sam3Note = document.createElement("p");
         sam3Note.className = "fs-muted fs-dependency-note";
         sam3Note.textContent = t("sam3_install_hint");
         panel.appendChild(sam3Note);
       }
-      var actions = document.createElement("div");
-      actions.className = "fs-btn-row";
-      addButton(actions, t("copy_command"), "", async function () {
-        try {
-          await navigator.clipboard.writeText(command.textContent);
-          this.textContent = t("copied");
-          setTimeout(function () { if (document.body.contains(actions)) renderCurrentStep(); }, 1200);
-        } catch (_err) {
-          showAlert(command.textContent, "warn");
-        }
-      });
-      panel.appendChild(actions);
     }
     stepBody.appendChild(panel);
 
@@ -422,8 +404,8 @@
     if (!state.bootstrapReady) {
       showAlert(
         FS.getLocale() === "zh"
-          ? "当前 Python 不能启动 FigureSmith 服务，请先安装服务包。"
-          : "The selected Python cannot start FigureSmith yet. Install the service packages first.",
+          ? "内置 Runtime V1 不完整，FigureSmith 无法安全启动服务。请重新安装匹配版本的运行时包。"
+          : "The packaged Runtime V1 is incomplete. Reinstall the matching runtime pack.",
         "bad"
       );
     } else if (!state.modelsReady || !s.gpu_available) {

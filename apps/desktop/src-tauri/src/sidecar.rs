@@ -12,7 +12,7 @@ use std::fs;
 use std::io::{BufRead, BufReader, Read};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Output, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -118,13 +118,15 @@ impl SidecarState {
             vendor_dir.display()
         );
 
-        // Build child env carefully — never log token. Keep the selected
-        // user's Python installation, but discard inherited source-path hooks
-        // so the packaged application is the only code added to sys.path.
+        // Build child env carefully — never log token. Release mode uses only
+        // the verified embedded interpreter; development mode may use an
+        // explicitly resolved external Python. In both modes, discard inherited
+        // source-path hooks so packaged application code wins deterministically.
         let mut cmd = Command::new(&python);
         scrub_python_path(&mut cmd);
         let dev_mode = std::env::var("FIGURESMITH_DEV_MODE").ok();
-        cmd.arg(main_py.as_os_str())
+        cmd.arg("-B")
+            .arg(main_py.as_os_str())
             .arg("--host")
             .arg(BIND_HOST)
             .arg("--port")
@@ -150,12 +152,7 @@ impl SidecarState {
             .env("no_proxy", "127.0.0.1,localhost,::1")
             .env("PYTHONPATH", &pythonpath)
             .env("FIGURESMITH_RUNTIME_ROOT", &layout.root)
-            .env(
-                "FIGURESMITH_MANAGED_PYTHON_DIR",
-                managed_python_root()
-                    .map(|path| path.to_string_lossy().into_owned())
-                    .unwrap_or_default(),
-            )
+            .env("PYTHONDONTWRITEBYTECODE", "1")
             .env("PYTHONUNBUFFERED", "1")
             // Ensure tests/dev bypass does not leak into desktop child.
             .env_remove("FIGURESMITH_DISABLE_AUTH")
@@ -166,6 +163,14 @@ impl SidecarState {
         if layout.release {
             cmd.env("FIGURESMITH_DEV_MODE", "0");
             cmd.env("FIGURESMITH_RELEASE_MODE", "1");
+            if let Some(python_dir) = python.parent() {
+                let inherited = std::env::var_os("PATH").unwrap_or_default();
+                let mut paths = vec![python_dir.to_path_buf()];
+                paths.extend(std::env::split_paths(&inherited));
+                let joined = std::env::join_paths(paths)
+                    .map_err(|err| format!("cannot construct embedded runtime DLL path: {err}"))?;
+                cmd.env("PATH", joined);
+            }
         } else if let Some(value) = dev_mode.as_deref() {
             cmd.env("FIGURESMITH_DEV_MODE", value);
         }
@@ -404,51 +409,6 @@ const DEFAULT_BOOTSTRAP_IMPORTS: &[(&str, &str)] = &[
     ("python-multipart", "multipart"),
 ];
 
-fn managed_python_root() -> Result<PathBuf, String> {
-    if let Ok(raw) = std::env::var("FIGURESMITH_MANAGED_PYTHON_DIR") {
-        let value = raw.trim();
-        if !value.is_empty() {
-            return Ok(PathBuf::from(value));
-        }
-    }
-
-    let data_root = if cfg!(windows) {
-        std::env::var_os("LOCALAPPDATA").map(PathBuf::from)
-    } else {
-        std::env::var_os("XDG_DATA_HOME")
-            .map(PathBuf::from)
-            .or_else(|| {
-                std::env::var_os("HOME")
-                    .map(|home| PathBuf::from(home).join(".local").join("share"))
-            })
-    }
-    .ok_or_else(|| {
-        "could not resolve a writable user data directory for the managed Python environment"
-            .to_string()
-    })?;
-    Ok(data_root.join("FigureSmith").join("python-env"))
-}
-
-fn managed_python_executable(root: &Path) -> PathBuf {
-    if cfg!(windows) {
-        root.join("Scripts").join("python.exe")
-    } else {
-        root.join("bin").join("python")
-    }
-}
-
-fn bootstrap_requirements_path(runtime_root: &Path) -> Option<PathBuf> {
-    [
-        runtime_root.join("requirements-bootstrap.txt"),
-        runtime_root
-            .join("scripts")
-            .join("runtime")
-            .join("requirements-bootstrap.txt"),
-    ]
-    .into_iter()
-    .find(|path| path.is_file())
-}
-
 #[derive(Debug, Clone)]
 struct PythonCandidate {
     program: PathBuf,
@@ -686,16 +646,7 @@ fn external_python_candidates(runtime_root: &Path) -> Vec<PythonCandidate> {
 }
 
 fn python_candidates(runtime_root: &Path) -> Vec<PythonCandidate> {
-    let mut candidates = Vec::new();
-    if let Ok(root) = managed_python_root() {
-        push_python_path(
-            &mut candidates,
-            managed_python_executable(&root),
-            format!("FigureSmith managed environment ({})", root.display()),
-        );
-    }
-    candidates.extend(external_python_candidates(runtime_root));
-    candidates
+    external_python_candidates(runtime_root)
 }
 
 fn bootstrap_imports(runtime_root: &Path) -> Result<Vec<(String, String)>, String> {
@@ -854,214 +805,23 @@ print(json.dumps({
     Ok(executable)
 }
 
-fn command_output_summary(output: &Output) -> String {
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let text = if !stderr.trim().is_empty() {
-        stderr.as_ref()
-    } else {
-        stdout.as_ref()
-    };
-    let lines = text.lines().rev().take(8).collect::<Vec<_>>();
-    let summary = lines.into_iter().rev().collect::<Vec<_>>().join(" ");
-    if summary.is_empty() {
-        "command produced no diagnostic output".into()
-    } else {
-        summary.chars().take(1600).collect()
-    }
-}
-
-fn same_python_path(left: &Path, right: &Path) -> bool {
-    let left = left.canonicalize().unwrap_or_else(|_| left.to_path_buf());
-    let right = right.canonicalize().unwrap_or_else(|_| right.to_path_buf());
-    if cfg!(windows) {
-        left.to_string_lossy()
-            .eq_ignore_ascii_case(&right.to_string_lossy())
-    } else {
-        left == right
-    }
-}
-
-fn create_managed_python_environment(
-    base_python: &Path,
-    managed_root: &Path,
-    requirements: &Path,
-) -> Result<PathBuf, String> {
-    if let Some(parent) = managed_root.parent() {
-        fs::create_dir_all(parent).map_err(|err| {
-            format!(
-                "cannot create FigureSmith user environment directory {} ({err})",
-                parent.display()
-            )
-        })?;
-    }
-
-    let mut venv = Command::new(base_python);
-    scrub_python_path(&mut venv);
-    let venv_output = venv
-        .args(["-m", "venv", "--clear"])
-        .arg(managed_root)
-        .output()
-        .map_err(|err| format!("failed to create isolated Python environment: {err}"))?;
-    if !venv_output.status.success() {
-        return Err(format!(
-            "Python could not create the isolated environment at {}: {}",
-            managed_root.display(),
-            command_output_summary(&venv_output)
-        ));
-    }
-
-    let managed_python = managed_python_executable(managed_root);
-    if !managed_python.is_file() {
-        return Err(format!(
-            "isolated Python environment was created without an interpreter: {}",
-            managed_python.display()
-        ));
-    }
-
-    // Only bootstrap packages are installed here. The base interpreter is never
-    // used as pip's target, so this operation cannot modify the user's original
-    // Python environment.
-    let mut pip = Command::new(&managed_python);
-    scrub_python_path(&mut pip);
-    let pip_output = pip
-        .args([
-            "-m",
-            "pip",
-            "install",
-            "--disable-pip-version-check",
-            "--no-input",
-            "-r",
-        ])
-        .arg(requirements)
-        .output()
-        .map_err(|err| format!("failed to install FigureSmith service packages: {err}"))?;
-    if !pip_output.status.success() {
-        return Err(format!(
-            "service packages could not be installed into {}: {}",
-            managed_root.display(),
-            command_output_summary(&pip_output)
-        ));
-    }
-    Ok(managed_python)
-}
-
-fn ensure_managed_environment(runtime_root: &Path) -> Result<PathBuf, String> {
-    let managed_root = managed_python_root()?;
-    let managed_python = managed_python_executable(&managed_root);
-    let imports = bootstrap_imports(runtime_root)?;
-
-    if managed_python.is_file() {
-        let candidate = PythonCandidate {
-            program: managed_python.clone(),
-            prefix_args: Vec::new(),
-            label: format!(
-                "FigureSmith managed environment ({})",
-                managed_root.display()
-            ),
-        };
-        if probe_python_candidate(&candidate, &imports).is_ok() {
-            return Ok(managed_python);
-        }
-    }
-
-    let requirements = bootstrap_requirements_path(runtime_root).ok_or_else(|| {
-        format!(
-            "FigureSmith service requirements are missing under {}",
-            runtime_root.display()
-        )
-    })?;
-    let mut diagnostics = Vec::new();
-    for candidate in external_python_candidates(runtime_root) {
-        match probe_python_candidate(&candidate, &[]) {
-            Ok(base_python) => {
-                if same_python_path(&base_python, &managed_python) {
-                    diagnostics.push(format!(
-                        "{} is the managed environment target and cannot be its own base",
-                        candidate.label
-                    ));
-                    continue;
-                }
-                let created =
-                    create_managed_python_environment(&base_python, &managed_root, &requirements)?;
-                let managed_candidate = PythonCandidate {
-                    program: created.clone(),
-                    prefix_args: Vec::new(),
-                    label: format!(
-                        "FigureSmith managed environment ({})",
-                        managed_root.display()
-                    ),
-                };
-                probe_python_candidate(&managed_candidate, &imports).map_err(|error| {
-                    format!(
-                        "isolated environment was created but service package verification failed: {error}"
-                    )
-                })?;
-                return Ok(created);
-            }
-            Err(error) => diagnostics.push(error),
-        }
-    }
-
-    let detail = diagnostics.join("; ");
-    Err(format!(
-        "no supported base Python 3.10-3.12 was found to create the isolated FigureSmith environment. Tried: {}",
-        detail.chars().take(2400).collect::<String>()
-    ))
-}
-
-pub fn prepare_managed_python_environment(runtime_root: &Path) -> Result<PathBuf, String> {
-    ensure_managed_environment(runtime_root)
-}
-
-fn resolve_python(runtime_root: &Path, _release: bool) -> Result<PathBuf, String> {
+fn resolve_python(runtime_root: &Path) -> Result<PathBuf, String> {
     let imports = bootstrap_imports(runtime_root)?;
     let candidates = python_candidates(runtime_root);
     if candidates.is_empty() {
         return Err(
-            "No Python candidates found. Install Python 3.10-3.12 or set FIGURESMITH_PYTHON."
-                .into(),
+            "No development Python candidates found. Set FIGURESMITH_PYTHON for dev mode.".into(),
         );
     }
     let mut diagnostics = Vec::new();
-    if let Ok(managed_root) = managed_python_root() {
-        let managed_python = managed_python_executable(&managed_root);
-        if managed_python.is_file() {
-            let managed_candidate = PythonCandidate {
-                program: managed_python.clone(),
-                prefix_args: Vec::new(),
-                label: format!(
-                    "FigureSmith managed environment ({})",
-                    managed_root.display()
-                ),
-            };
-            return probe_python_candidate(&managed_candidate, &imports).map_err(|error| {
-                format!(
-                    "FigureSmith managed Python environment is not ready at {}: {error}",
-                    managed_root.display()
-                )
-            });
-        }
-    }
     for candidate in &candidates {
         match probe_python_candidate(candidate, &imports) {
             Ok(path) => return Ok(path),
             Err(error) => diagnostics.push(error),
         }
     }
-    let requirements = runtime_root.join("requirements-runtime.txt");
-    let install_hint = if requirements.is_file() {
-        format!(
-            "Install the user environment with: <python> -m pip install -r \"{}\"",
-            requirements.display()
-        )
-    } else {
-        "Install the required packages with: <python> -m pip install -r requirements-runtime.txt"
-            .into()
-    };
     Err(format!(
-        "No supported Python environment is ready for FigureSmith. {} Tried: {}",
-        install_hint,
+        "No supported development Python environment is ready for FigureSmith. Tried: {}",
         diagnostics.join("; ")
     ))
 }
@@ -1195,14 +955,14 @@ fn env_flag(name: &str) -> bool {
         .unwrap_or(false)
 }
 
-const APPLICATION_REQUIRED_FILES: &[&str] = &[
+const RUNTIME_REQUIRED_FILES: &[&str] = &[
+    "python/python.exe",
+    "python/python312._pth",
     "app/backend/main.py",
     "app/vendor/autofigure_edit/server.py",
     "app/backend/figuresmith/runtime/dependencies.json",
-    "requirements-runtime.txt",
-    "requirements-bootstrap.txt",
-    "requirements-models.txt",
 ];
+const SUPPORTED_RUNTIME_VARIANTS: &[&str] = &["cpu", "cu128"];
 
 #[derive(Debug, Clone)]
 struct ManifestFileEntry {
@@ -1225,8 +985,9 @@ fn normalize_manifest_path(value: &str) -> Result<String, String> {
     Ok(parts.join("/"))
 }
 
-fn application_file_is_forbidden(relative: &str) -> Option<&'static str> {
+fn runtime_file_is_forbidden(relative: &str) -> Option<&'static str> {
     let lower = relative.to_ascii_lowercase();
+    let in_site_packages = lower.starts_with("python/lib/site-packages/");
     let parts: Vec<&str> = lower.split('/').collect();
     let extension = Path::new(&lower)
         .extension()
@@ -1244,10 +1005,12 @@ fn application_file_is_forbidden(relative: &str) -> Option<&'static str> {
         "bin",
     ]
     .contains(&extension)
+        && lower != "python/python312._pth"
+        && !(in_site_packages && matches!(extension, "pth" | "bin"))
     {
         return Some("weight-like file");
     }
-    if parts.iter().any(|part| {
+    let universally_forbidden = parts.iter().any(|part| {
         matches!(
             *part,
             ".git"
@@ -1258,30 +1021,28 @@ fn application_file_is_forbidden(relative: &str) -> Option<&'static str> {
                 | ".trash"
                 | "__pycache__"
                 | "node_modules"
-                | "outputs"
-                | "uploads"
                 | "target"
                 | ".venv"
                 | "venv"
         )
-    }) {
+    });
+    let mutable_outside_site_packages = !in_site_packages
+        && parts
+            .iter()
+            .any(|part| matches!(*part, "outputs" | "uploads"));
+    if universally_forbidden || mutable_outside_site_packages {
         return Some("cache, build, or mutable-data directory");
     }
     if parts.starts_with(&["app", "resources", "models"]) {
         return Some("model staging directory");
     }
-    if lower.starts_with("python/")
-        || lower == "python.exe"
-        || lower.ends_with("/python.exe")
-        || lower.ends_with("/python312.dll")
-        || lower.ends_with(".whl")
-    {
-        return Some("embedded Python or dependency artifact");
+    if lower.ends_with(".whl") {
+        return Some("loose wheel");
     }
     None
 }
 
-fn collect_application_files(root: &Path) -> Result<Vec<(String, PathBuf)>, String> {
+fn collect_runtime_files(root: &Path) -> Result<Vec<(String, PathBuf)>, String> {
     fn visit(
         root: &Path,
         directory: &Path,
@@ -1332,7 +1093,7 @@ fn collect_application_files(root: &Path) -> Result<Vec<(String, PathBuf)>, Stri
             if relative == "runtime-manifest.json" {
                 continue;
             }
-            if let Some(reason) = application_file_is_forbidden(&relative) {
+            if let Some(reason) = runtime_file_is_forbidden(&relative) {
                 return Err(format!(
                     "application file rejected ({}): {}",
                     reason, relative
@@ -1391,8 +1152,8 @@ fn validate_runtime_manifest(runtime_root: &Path) -> Result<(), String> {
             manifest_path.display()
         )
     })?;
-    if value.get("schema").and_then(|v| v.as_u64()) != Some(1) {
-        return Err("unsupported runtime manifest schema".into());
+    if value.get("schema").and_then(|v| v.as_u64()) != Some(2) {
+        return Err("unsupported runtime manifest schema; Runtime V1 requires schema 2".into());
     }
     if value.get("product").and_then(|v| v.as_str()) != Some("FigureSmith") {
         return Err("runtime manifest product is not FigureSmith".into());
@@ -1403,14 +1164,47 @@ fn validate_runtime_manifest(runtime_root: &Path) -> Result<(), String> {
             env!("CARGO_PKG_VERSION")
         ));
     }
-    if value.get("application_only").and_then(|v| v.as_bool()) != Some(true) {
-        return Err("runtime manifest is not an application-only pack".into());
+    let variant = value
+        .get("variant")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "runtime manifest variant is missing".to_string())?;
+    if !SUPPORTED_RUNTIME_VARIANTS.contains(&variant) {
+        return Err("runtime manifest variant must be cpu or cu128".into());
     }
-    if value.get("python_required").and_then(|v| v.as_str()) != Some("external") {
-        return Err("runtime manifest does not declare external Python".into());
+    if value.get("runtime_complete").and_then(|v| v.as_bool()) != Some(true) {
+        return Err("runtime manifest does not declare a self-contained runtime".into());
     }
-    if value.get("runtime_complete").and_then(|v| v.as_bool()) != Some(false) {
-        return Err("runtime manifest unexpectedly contains an embedded runtime".into());
+    let python = value
+        .get("python")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| "runtime manifest Python metadata is missing".to_string())?;
+    if python
+        .get("version")
+        .and_then(|v| v.as_str())
+        .filter(|v| !v.trim().is_empty())
+        .is_none()
+        || !python
+            .get("source_sha256")
+            .and_then(|v| v.as_str())
+            .is_some_and(valid_sha256)
+    {
+        return Err("runtime manifest Python metadata is invalid".into());
+    }
+    let locks = value
+        .get("locks")
+        .and_then(|v| v.as_object())
+        .ok_or_else(|| "runtime manifest lock metadata is missing".to_string())?;
+    if locks.len() != 3
+        || ["requirements", "sources", "wheelhouse"]
+            .iter()
+            .any(|name| {
+                !locks
+                    .get(*name)
+                    .and_then(|v| v.as_str())
+                    .is_some_and(valid_sha256)
+            })
+    {
+        return Err("runtime manifest lock metadata is invalid".into());
     }
     if value.get("contains_weights").and_then(|v| v.as_bool()) != Some(false) {
         return Err("runtime manifest does not prove contains_weights=false".into());
@@ -1432,7 +1226,17 @@ fn validate_runtime_manifest(runtime_root: &Path) -> Result<(), String> {
 
     let mut expected = HashMap::<String, ManifestFileEntry>::new();
     for entry in files {
-        let path = entry
+        let object = entry
+            .as_object()
+            .ok_or_else(|| "runtime manifest file entry is not an object".to_string())?;
+        if object.len() != 3
+            || !["path", "size_bytes", "sha256"]
+                .iter()
+                .all(|name| object.contains_key(*name))
+        {
+            return Err("runtime manifest file entry has unexpected fields".into());
+        }
+        let path = object
             .get("path")
             .and_then(|v| v.as_str())
             .ok_or_else(|| "runtime manifest file path is missing".to_string())?;
@@ -1441,11 +1245,11 @@ fn validate_runtime_manifest(runtime_root: &Path) -> Result<(), String> {
         if expected.contains_key(&key) {
             return Err(format!("runtime manifest lists a file twice: {path}"));
         }
-        let size_bytes = entry
+        let size_bytes = object
             .get("size_bytes")
             .and_then(|v| v.as_u64())
             .ok_or_else(|| format!("runtime manifest size is invalid: {path}"))?;
-        let sha256 = entry
+        let sha256 = object
             .get("sha256")
             .and_then(|v| v.as_str())
             .ok_or_else(|| format!("runtime manifest SHA-256 is missing: {path}"))?;
@@ -1462,15 +1266,35 @@ fn validate_runtime_manifest(runtime_root: &Path) -> Result<(), String> {
         );
     }
 
-    for required in APPLICATION_REQUIRED_FILES {
+    for required in RUNTIME_REQUIRED_FILES {
         if !expected.contains_key(&required.to_ascii_lowercase()) {
             return Err(format!(
                 "runtime manifest is missing required file: {required}"
             ));
         }
     }
+    for (lock_name, relative) in [
+        (
+            "requirements",
+            format!("locks/requirements-win-py312-{variant}.lock.json"),
+        ),
+        ("sources", format!("locks/sources-{variant}.lock.json")),
+        (
+            "wheelhouse",
+            format!("locks/wheelhouse-{variant}.manifest.json"),
+        ),
+    ] {
+        let entry = expected
+            .get(&relative.to_ascii_lowercase())
+            .ok_or_else(|| format!("runtime manifest is missing required file: {relative}"))?;
+        if locks.get(lock_name).and_then(|v| v.as_str()) != Some(entry.sha256.as_str()) {
+            return Err(format!(
+                "runtime manifest {lock_name} lock digest does not match {relative}"
+            ));
+        }
+    }
 
-    let actual_files = collect_application_files(runtime_root)?;
+    let actual_files = collect_runtime_files(runtime_root)?;
     let mut actual = HashMap::<String, (String, PathBuf)>::new();
     for (relative, path) in actual_files {
         let key = relative.to_ascii_lowercase();
@@ -1571,8 +1395,18 @@ fn resolve_application_layout(
     if !vendor_dir.join("server.py").is_file() {
         return Err(format!("vendor entry not found: {}", vendor_dir.display()));
     }
-    ensure_managed_environment(&runtime_root)?;
-    let python = resolve_python(&runtime_root, release)?;
+    let python = if release {
+        let embedded = runtime_root.join("python").join("python.exe");
+        if !embedded.is_file() {
+            return Err(format!(
+                "packaged runtime interpreter is missing: {}",
+                embedded.display()
+            ));
+        }
+        embedded
+    } else {
+        resolve_python(&runtime_root)?
+    };
     Ok(RuntimeLayout {
         root: runtime_root,
         backend_dir,
@@ -1598,13 +1432,29 @@ fn resolve_runtime_layout(base: &Path) -> Result<RuntimeLayout, String> {
 
 /// Resolve the application pack through the Tauri Resource directory.
 pub fn resolve_release_runtime_root(resource_dir: Option<PathBuf>) -> Result<PathBuf, String> {
-    let resource = resource_dir.ok_or_else(|| {
-        "release application resource directory is unavailable; refusing source fallback"
-            .to_string()
-    })?;
-    let runtime_root = packaged_runtime_root(&resource)?;
-    validate_runtime_manifest(&runtime_root)?;
-    Ok(runtime_root)
+    let mut candidates = Vec::new();
+    if let Some(resource) = resource_dir {
+        candidates.push(resource);
+    }
+    if let Ok(executable) = std::env::current_exe() {
+        if let Some(parent) = executable.parent() {
+            candidates.push(parent.to_path_buf());
+        }
+    }
+    let mut diagnostics = Vec::new();
+    for candidate in candidates {
+        match packaged_runtime_root(&candidate) {
+            Ok(runtime_root) => {
+                validate_runtime_manifest(&runtime_root)?;
+                return Ok(runtime_root);
+            }
+            Err(error) => diagnostics.push(error),
+        }
+    }
+    Err(format!(
+        "companion Runtime V1 pack is unavailable beside the application; refusing PATH, Python, and source fallback ({})",
+        diagnostics.join("; ").chars().take(1200).collect::<String>()
+    ))
 }
 
 /// Resolve source files only for an explicit development build.
@@ -1689,50 +1539,68 @@ mod tests {
         root
     }
 
-    fn write_application_fixture(
-        root: &Path,
-        product: &str,
-        application_only: bool,
-        version: &str,
-    ) {
+    fn write_runtime_fixture(root: &Path, product: &str, version: &str, schema: u64) {
         let backend = root.join("app").join("backend");
         let vendor = root.join("app").join("vendor").join("autofigure_edit");
         let runtime = backend.join("figuresmith").join("runtime");
+        let python = root.join("python");
+        let locks = root.join("locks");
         std::fs::create_dir_all(&runtime).expect("runtime fixture");
         std::fs::create_dir_all(&vendor).expect("vendor fixture");
+        std::fs::create_dir_all(python.join("Lib/site-packages")).expect("python fixture");
+        std::fs::create_dir_all(&locks).expect("locks fixture");
         std::fs::write(backend.join("main.py"), b"# fixture\n").expect("main fixture");
         std::fs::write(vendor.join("server.py"), b"# fixture\n").expect("vendor fixture");
         std::fs::write(
             runtime.join("dependencies.json"),
-            br#"{"schema":1,"packages":[{"distribution":"fastapi","import":"fastapi","scope":"bootstrap"}]}"#,
+            br#"{"schema":1,"packages":[]}"#,
         )
         .expect("dependency fixture");
+        std::fs::write(python.join("python.exe"), b"embedded python fixture\n")
+            .expect("python exe");
+        std::fs::write(
+            python.join("python312._pth"),
+            b"python312.zip\n.\nLib\\site-packages\nimport site\n",
+        )
+        .expect("pth fixture");
         for name in [
-            "requirements-runtime.txt",
-            "requirements-bootstrap.txt",
-            "requirements-models.txt",
+            "requirements-win-py312-cpu.lock.json",
+            "sources-cpu.lock.json",
+            "wheelhouse-cpu.manifest.json",
         ] {
-            std::fs::write(root.join(name), b"fastapi>=0.110,<1.0\n")
-                .expect("requirements fixture");
+            std::fs::write(locks.join(name), format!("{name}\n")).expect("lock fixture");
         }
 
         let mut files = Vec::new();
-        for (relative, path) in collect_application_files(root).expect("fixture files") {
+        for (relative, path) in collect_runtime_files(root).expect("fixture files") {
             files.push(serde_json::json!({
                 "path": relative,
                 "size_bytes": std::fs::metadata(&path).expect("fixture stat").len(),
                 "sha256": sha256_file(&path).expect("fixture hash"),
             }));
         }
+        let lock_digest = |name: &str| {
+            files
+                .iter()
+                .find(|entry| entry["path"] == format!("locks/{name}"))
+                .and_then(|entry| entry["sha256"].as_str())
+                .unwrap()
+                .to_string()
+        };
         let manifest = serde_json::json!({
-            "schema": 1,
+            "schema": schema,
             "product": product,
             "version": version,
+            "variant": "cpu",
             "platform": "Windows",
             "arch": "x86_64",
-            "application_only": application_only,
-            "python_required": "external",
-            "runtime_complete": false,
+            "python": {"version": "3.12.10", "source_sha256": "a".repeat(64)},
+            "locks": {
+                "requirements": lock_digest("requirements-win-py312-cpu.lock.json"),
+                "sources": lock_digest("sources-cpu.lock.json"),
+                "wheelhouse": lock_digest("wheelhouse-cpu.manifest.json"),
+            },
+            "runtime_complete": true,
             "contains_weights": false,
             "contains_cache": false,
             "file_count": files.len(),
@@ -1771,51 +1639,73 @@ mod tests {
     #[test]
     fn release_requires_a_resource_directory() {
         let error = resolve_release_runtime_root(None).expect_err("resource is required");
-        assert!(error.contains("refusing source fallback"));
+        assert!(error.contains("refusing PATH, Python, and source fallback"));
     }
 
     #[test]
-    fn release_application_manifest_is_validated_without_embedded_python() {
-        let root = temp_runtime_root("application");
-        write_application_fixture(&root, "FigureSmith", true, env!("CARGO_PKG_VERSION"));
-        validate_runtime_manifest(&root).expect("valid application pack");
+    fn release_runtime_manifest_is_validated_with_embedded_python() {
+        let root = temp_runtime_root("runtime");
+        write_runtime_fixture(&root, "FigureSmith", env!("CARGO_PKG_VERSION"), 2);
+        validate_runtime_manifest(&root).expect("valid Runtime V1 pack");
+        let layout = resolve_application_layout(root.clone(), true).expect("release layout");
+        assert_eq!(layout.python, root.join("python/python.exe"));
         let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
-    fn release_manifest_rejects_wrong_identity_or_embedded_runtime() {
+    fn release_manifest_rejects_wrong_identity_and_schema_one() {
         let wrong_product = temp_runtime_root("identity");
-        write_application_fixture(
-            &wrong_product,
-            "OtherProduct",
-            true,
-            env!("CARGO_PKG_VERSION"),
-        );
+        write_runtime_fixture(&wrong_product, "OtherProduct", env!("CARGO_PKG_VERSION"), 2);
         let error = validate_runtime_manifest(&wrong_product).expect_err("wrong product");
         assert!(error.contains("product is not FigureSmith"));
         let _ = std::fs::remove_dir_all(wrong_product);
 
-        let embedded = temp_runtime_root("embedded");
-        write_application_fixture(&embedded, "FigureSmith", false, env!("CARGO_PKG_VERSION"));
-        let error = validate_runtime_manifest(&embedded).expect_err("non application pack");
-        assert!(error.contains("application-only pack"));
-        let _ = std::fs::remove_dir_all(embedded);
+        let schema_one = temp_runtime_root("schema-one");
+        write_runtime_fixture(&schema_one, "FigureSmith", env!("CARGO_PKG_VERSION"), 1);
+        let error = validate_runtime_manifest(&schema_one).expect_err("schema one");
+        assert!(error.contains("requires schema 2"));
+        let _ = std::fs::remove_dir_all(schema_one);
     }
 
     #[test]
-    fn release_manifest_rejects_tampered_or_extra_files() {
+    fn release_manifest_rejects_missing_interpreter() {
+        let root = temp_runtime_root("missing-python");
+        write_runtime_fixture(&root, "FigureSmith", env!("CARGO_PKG_VERSION"), 2);
+        std::fs::remove_file(root.join("python/python.exe")).expect("remove interpreter");
+        let error = validate_runtime_manifest(&root).expect_err("missing interpreter");
+        assert!(error.contains("inventory mismatch"));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn release_manifest_rejects_tampered_extra_and_package_namespace_files_correctly() {
         let root = temp_runtime_root("tamper");
-        write_application_fixture(&root, "FigureSmith", true, env!("CARGO_PKG_VERSION"));
+        write_runtime_fixture(&root, "FigureSmith", env!("CARGO_PKG_VERSION"), 2);
         std::fs::write(root.join("app/backend/main.py"), b"tampered\n").expect("tamper");
         let error = validate_runtime_manifest(&root).expect_err("tampered file");
         assert!(error.contains("SHA-256 mismatch") || error.contains("size mismatch"));
+        let _ = std::fs::remove_dir_all(root);
+
+        let root = temp_runtime_root("package-uploads");
+        let package_dir = root.join("python/Lib/site-packages/example/resources/uploads");
+        std::fs::create_dir_all(&package_dir).expect("package namespace");
+        std::fs::write(
+            package_dir.join("types.py"),
+            b"# legitimate package namespace\n",
+        )
+        .expect("package file");
+        assert!(collect_runtime_files(&root).is_ok());
+        std::fs::create_dir_all(root.join("app/uploads")).expect("mutable uploads");
+        std::fs::write(root.join("app/uploads/user.txt"), b"user data\n").expect("user data");
+        let error = collect_runtime_files(&root).expect_err("mutable uploads rejected");
+        assert!(error.contains("mutable-data"));
         let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
     fn release_manifest_rejects_wrong_version() {
         let root = temp_runtime_root("version");
-        write_application_fixture(&root, "FigureSmith", true, "99.99.99");
+        write_runtime_fixture(&root, "FigureSmith", "99.99.99", 2);
         let error = validate_runtime_manifest(&root).expect_err("wrong version");
         assert!(error.contains("does not match desktop version"));
         let _ = std::fs::remove_dir_all(root);

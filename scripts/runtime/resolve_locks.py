@@ -4,11 +4,11 @@ Runtime V1 ships a pre-installed interpreter, so the dependency set must be a
 property of the FigureSmith version rather than of the install date. This script
 performs the *acquisition* half of that contract: it resolves an exact closure
 and writes ``requirements-win-py312-<variant>.lock.json`` plus
-``sources.lock.json``.
+``sources-<variant>.lock.json``.
 
 Resolution runs with ``pip install --dry-run --report``, which returns every
 resolved distribution with its URL and SHA-256 without downloading any wheel.
-The multi-GB download and the resulting ``wheelhouse-manifest.json`` belong to
+The multi-GB download and resulting ``wheelhouse-<variant>.manifest.json`` belong to
 CI; this script only needs the network long enough to read metadata, plus the
 small archives it must hash itself.
 
@@ -27,9 +27,13 @@ import argparse
 import hashlib
 import json
 import re
+import ssl
 import subprocess
 import sys
 import tempfile
+import time
+import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any, Iterable, Mapping
@@ -100,6 +104,11 @@ MSYS2_PACKAGES = (
     ("graphite2", "mingw-w64-x86_64-graphite2-1.3.15-1-any.pkg.tar.zst", "LGPL-2.1-or-later"),
     ("harfbuzz", "mingw-w64-x86_64-harfbuzz-14.2.1-1-any.pkg.tar.zst", "MIT"),
     ("gcc-libs", "mingw-w64-x86_64-gcc-libs-16.1.0-5-any.pkg.tar.zst", "GPL-3.0-or-later WITH GCC-exception-3.1"),
+    ("gettext-runtime", "mingw-w64-x86_64-gettext-runtime-1.0-1-any.pkg.tar.zst", "LGPL-2.1-or-later"),
+    ("glib2", "mingw-w64-x86_64-glib2-2.88.3-1-any.pkg.tar.zst", "LGPL-2.1-or-later"),
+    ("libwinpthread", "mingw-w64-x86_64-libwinpthread-14.0.0.r220.gd999af622-1-any.pkg.tar.zst", "MIT"),
+    ("libiconv", "mingw-w64-x86_64-libiconv-1.19-1-any.pkg.tar.zst", "LGPL-2.1-or-later"),
+    ("pcre2", "mingw-w64-x86_64-pcre2-10.47-1-any.pkg.tar.zst", "BSD-3-Clause"),
 )
 
 # DLLs extracted from the packages above, in the measured closure order.
@@ -118,6 +127,11 @@ CAIRO_DLLS = (
     "libharfbuzz-0.dll",
     "libgcc_s_seh-1.dll",
     "libstdc++-6.dll",
+    "libglib-2.0-0.dll",
+    "libintl-8.dll",
+    "libwinpthread-1.dll",
+    "libiconv-2.dll",
+    "libpcre2-8-0.dll",
 )
 
 _WHEEL_RE = re.compile(
@@ -125,11 +139,16 @@ _WHEEL_RE = re.compile(
     r"(?:-(?P<build>\d[^-]*?))?"
     r"-(?P<python>[^-]+)-(?P<abi>[^-]+)-(?P<platform>[^-]+)\.whl$"
 )
-_MSYS2_VERSION_RE = re.compile(r"-(\d[\d.]*)-(\d+)-any\.pkg\.tar\.zst$")
+_MSYS2_VERSION_RE = re.compile(r"-(\d[0-9A-Za-z.+]*?)-(\d+)-any\.pkg\.tar\.zst$")
 
 
 class ResolveError(RuntimeError):
     """Raised when a closure cannot be resolved into an exact, hashed lock."""
+
+
+def _wheel_filename(url: str) -> str:
+    """Return the decoded wheel basename from a resolver download URL."""
+    return urllib.parse.unquote(url.rsplit("/", 1)[-1].split("#", 1)[0])
 
 
 def _wheel_tags(filename: str) -> list[str]:
@@ -245,7 +264,7 @@ def _resolve_closure(variant: str, python: str) -> list[dict[str, Any]]:
         name = metadata["name"]
         if not digest:
             raise ResolveError(f"{name} resolved without a SHA-256; refusing to lock")
-        filename = url.rsplit("/", 1)[-1].split("#", 1)[0]
+        filename = _wheel_filename(url)
         if not filename.endswith(".whl"):
             raise ResolveError(
                 f"{name} resolved to a non-wheel ({filename}); "
@@ -318,15 +337,28 @@ def _assert_variant_is_real(variant: str, packages: list[dict[str, Any]]) -> Non
             )
 
 
+def _read_url(url: str, *, timeout: int = 180, retries: int = 4) -> bytes:
+    """Read a small acquisition input with bounded transient-network retries."""
+    for attempt in range(1, retries + 1):
+        try:
+            request = urllib.request.Request(
+                url, headers={"User-Agent": "FigureSmith-Runtime-Acquirer/1"}
+            )
+            with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+                return response.read()
+        except (OSError, ssl.SSLError, urllib.error.URLError) as exc:
+            if attempt == retries:
+                raise ResolveError(
+                    f"cannot fetch {url} after {retries} attempts: {exc}"
+                ) from exc
+            time.sleep(min(2**attempt, 10))
+    raise AssertionError("unreachable")
+
+
 def _hash_url(url: str) -> tuple[str, int]:
-    """Stream a URL and return its SHA-256 and byte length."""
-    digest = hashlib.sha256()
-    size = 0
-    with urllib.request.urlopen(url, timeout=180) as response:  # noqa: S310
-        while chunk := response.read(1024 * 256):
-            digest.update(chunk)
-            size += len(chunk)
-    return digest.hexdigest(), size
+    """Read a pinned source and return its SHA-256 and byte length."""
+    payload = _read_url(url, timeout=300)
+    return hashlib.sha256(payload).hexdigest(), len(payload)
 
 
 def _msys2_version(filename: str) -> str:
@@ -336,13 +368,17 @@ def _msys2_version(filename: str) -> str:
     return f"{match.group(1)}-{match.group(2)}"
 
 
-def _msys2_sort_key(filename: str) -> tuple[int, ...]:
+def _msys2_sort_key(filename: str) -> tuple[tuple[int, object], ...]:
     match = _MSYS2_VERSION_RE.search(filename)
     if not match:
         return ()
-    return tuple(int(part) for part in match.group(1).split(".")) + (
-        int(match.group(2)),
-    )
+    # Natural-sort mixed versions such as 13.0.0.r124.g2717de84e.
+    parts = re.findall(r"\d+|[A-Za-z]+", match.group(1))
+    key: list[tuple[int, object]] = [
+        (0, int(part)) if part.isdigit() else (1, part.lower()) for part in parts
+    ]
+    key.append((0, int(match.group(2))))
+    return tuple(key)
 
 
 def refresh_msys2_packages() -> tuple[tuple[str, str, str], ...]:
@@ -353,8 +389,7 @@ def refresh_msys2_packages() -> tuple[tuple[str, str, str], ...]:
     because the index does not carry them.
     """
     print(f"reading {MSYS2_BASE} ...", file=sys.stderr)
-    with urllib.request.urlopen(MSYS2_BASE, timeout=180) as response:  # noqa: S310
-        index = response.read().decode("utf-8", "ignore")
+    index = _read_url(MSYS2_BASE).decode("utf-8", "ignore")
 
     refreshed: list[tuple[str, str, str]] = []
     for name, pinned, license_name in MSYS2_PACKAGES:
@@ -429,7 +464,7 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser.add_argument(
         "--sources-only",
         action="store_true",
-        help="only refresh sources.lock.json (CPython + native DLL chain)",
+        help="only refresh variant-specific sources locks (CPython + native DLL chain)",
     )
     parser.add_argument(
         "--refresh-msys2",

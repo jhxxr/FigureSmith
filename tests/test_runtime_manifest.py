@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -42,6 +44,13 @@ def test_manifest_import_does_not_require_backend_runtime_dependencies() -> None
     assert result.returncode == 0, result.stderr or result.stdout
 
 
+LOCK_DIGESTS = {
+    "requirements": hashlib.sha256(b"requirements lock").hexdigest(),
+    "sources": hashlib.sha256(b"sources lock").hexdigest(),
+    "wheelhouse": hashlib.sha256(b"wheelhouse manifest").hexdigest(),
+}
+
+
 def _runtime_pack(root: Path) -> None:
     """A minimal self-contained pack: interpreter, site-packages, application."""
     (root / "app" / "backend").mkdir(parents=True)
@@ -59,10 +68,21 @@ def _runtime_pack(root: Path) -> None:
     )
     (site_packages / "fastapi").mkdir()
     (site_packages / "fastapi" / "__init__.py").write_text("", encoding="utf-8")
+    locks = root / "locks"
+    locks.mkdir()
+    (locks / "requirements-win-py312-cpu.lock.json").write_bytes(b"requirements lock")
+    (locks / "sources-cpu.lock.json").write_bytes(b"sources lock")
+    (locks / "wheelhouse-cpu.manifest.json").write_bytes(b"wheelhouse manifest")
 
 
 def _write(root: Path, **overrides: object) -> Path:
-    kwargs: dict = {"version": "0.7.0", "variant": "cpu", "python_version": "3.12.10"}
+    kwargs: dict = {
+        "version": "0.7.0",
+        "variant": "cpu",
+        "python_version": "3.12.10",
+        "python_source_sha256": "b" * 64,
+        "locks": LOCK_DIGESTS,
+    }
     kwargs.update(overrides)
     return write_runtime_manifest(root, **kwargs)
 
@@ -72,22 +92,56 @@ def test_self_contained_manifest_round_trip(tmp_path: Path) -> None:
     root.mkdir()
     _runtime_pack(root)
 
-    manifest_path = _write(root, locks={"requirements": "a" * 64})
+    manifest_path = _write(root)
     manifest = verify_runtime_manifest(manifest_path, root)
 
     assert manifest["product"] == "FigureSmith"
     assert manifest["schema"] == 2
     assert manifest["variant"] == "cpu"
-    assert manifest["python"]["version"] == "3.12.10"
+    assert manifest["python"] == {
+        "version": "3.12.10",
+        "source_sha256": "b" * 64,
+    }
     assert manifest["runtime_complete"] is True
     assert manifest["contains_weights"] is False
-    assert manifest["locks"] == {"requirements": "a" * 64}
+    assert manifest["locks"] == LOCK_DIGESTS
     assert all("\\" not in item["path"] for item in manifest["files"])
     # The interpreter and its isolation policy file must be inventoried.
     paths = {item["path"] for item in manifest["files"]}
     assert "python/python.exe" in paths
     assert "python/python312._pth" in paths
     assert "python/Lib/site-packages/fastapi/__init__.py" in paths
+
+
+def test_manifest_requires_python_source_and_all_lock_digests(tmp_path: Path) -> None:
+    root = tmp_path / "runtime"
+    root.mkdir()
+    _runtime_pack(root)
+
+    with pytest.raises(RuntimeManifestError, match="python_source_sha256"):
+        _write(root, python_source_sha256="not-a-digest")
+
+    manifest_path = _write(root)
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    del data["locks"]["wheelhouse"]
+    manifest_path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(RuntimeManifestError, match="requirements, sources, and wheelhouse"):
+        verify_runtime_manifest(manifest_path, root)
+
+
+def test_manifest_rejects_lock_metadata_that_does_not_match_shipped_lock(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "runtime"
+    root.mkdir()
+    _runtime_pack(root)
+    manifest_path = _write(root)
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    data["locks"]["requirements"] = "f" * 64
+    manifest_path.write_text(json.dumps(data), encoding="utf-8")
+
+    with pytest.raises(RuntimeManifestError, match="requirements lock digest does not match"):
+        verify_runtime_manifest(manifest_path, root)
 
 
 def test_pack_without_interpreter_is_rejected(tmp_path: Path) -> None:
@@ -98,7 +152,12 @@ def test_pack_without_interpreter_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(RuntimeManifestError, match="python/python.exe"):
         build_runtime_manifest(
-            root, version="0.7.0", variant="cpu", python_version="3.12.10"
+            root,
+            version="0.7.0",
+            variant="cpu",
+            python_version="3.12.10",
+            python_source_sha256="b" * 64,
+            locks=LOCK_DIGESTS,
         )
 
 
@@ -124,7 +183,39 @@ def test_site_packages_pth_and_bin_ship_but_checkpoints_never_do(
     (site_packages / "torch" / "sam3.pt").write_bytes(b"weights")
     with pytest.raises(RuntimeManifestError, match="weight-like file"):
         build_runtime_manifest(
-            root, version="0.7.0", variant="cpu", python_version="3.12.10"
+            root,
+            version="0.7.0",
+            variant="cpu",
+            python_version="3.12.10",
+            python_source_sha256="b" * 64,
+            locks=LOCK_DIGESTS,
+        )
+
+
+def test_package_namespace_named_uploads_is_allowed(tmp_path: Path) -> None:
+    root = tmp_path / "runtime"
+    root.mkdir()
+    _runtime_pack(root)
+    site_packages = root / "python" / "Lib" / "site-packages"
+    uploads = site_packages / "openai" / "resources" / "uploads"
+    uploads.mkdir(parents=True)
+    (uploads / "parts.py").write_text("", encoding="utf-8")
+
+    manifest = verify_runtime_manifest(_write(root), root)
+    paths = {entry["path"] for entry in manifest["files"]}
+    assert "python/Lib/site-packages/openai/resources/uploads/parts.py" in paths
+
+    # An actual mutable uploads tree outside site-packages is still refused.
+    (root / "uploads").mkdir()
+    (root / "uploads" / "user.svg").write_text("<svg/>", encoding="utf-8")
+    with pytest.raises(RuntimeManifestError, match="mutable-data"):
+        build_runtime_manifest(
+            root,
+            version="0.7.0",
+            variant="cpu",
+            python_version="3.12.10",
+            python_source_sha256="b" * 64,
+            locks=LOCK_DIGESTS,
         )
 
 
@@ -136,7 +227,12 @@ def test_loose_wheels_are_refused(tmp_path: Path) -> None:
 
     with pytest.raises(RuntimeManifestError, match="loose wheel"):
         build_runtime_manifest(
-            root, version="0.7.0", variant="cpu", python_version="3.12.10"
+            root,
+            version="0.7.0",
+            variant="cpu",
+            python_version="3.12.10",
+            python_source_sha256="b" * 64,
+            locks=LOCK_DIGESTS,
         )
 
 
@@ -147,7 +243,12 @@ def test_unknown_variant_is_refused(tmp_path: Path) -> None:
 
     with pytest.raises(RuntimeManifestError, match="unsupported runtime variant"):
         build_runtime_manifest(
-            root, version="0.7.0", variant="cu999", python_version="3.12.10"
+            root,
+            version="0.7.0",
+            variant="cu999",
+            python_version="3.12.10",
+            python_source_sha256="b" * 64,
+            locks=LOCK_DIGESTS,
         )
 
 
@@ -175,7 +276,12 @@ def test_manifest_rejects_weights_and_caches(tmp_path: Path) -> None:
     (root / "models" / "sam3.pt").write_bytes(b"weights")
     with pytest.raises(RuntimeManifestError, match="weight-like file"):
         build_runtime_manifest(
-            root, version="0.7.0", variant="cpu", python_version="3.12.10"
+            root,
+            version="0.7.0",
+            variant="cpu",
+            python_version="3.12.10",
+            python_source_sha256="b" * 64,
+            locks=LOCK_DIGESTS,
         )
 
     (root / "models" / "sam3.pt").unlink()
@@ -186,7 +292,12 @@ def test_manifest_rejects_weights_and_caches(tmp_path: Path) -> None:
     (cache / "__init__.cpython-312.pyc").write_bytes(b"cache")
     with pytest.raises(RuntimeManifestError, match="cache, build, or mutable-data"):
         build_runtime_manifest(
-            root, version="0.7.0", variant="cpu", python_version="3.12.10"
+            root,
+            version="0.7.0",
+            variant="cpu",
+            python_version="3.12.10",
+            python_source_sha256="b" * 64,
+            locks=LOCK_DIGESTS,
         )
 
 

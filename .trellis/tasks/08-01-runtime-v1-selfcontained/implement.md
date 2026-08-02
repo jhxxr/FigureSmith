@@ -111,16 +111,62 @@ rather than re-creating it in a new script.
 
 ## Stage 5 — Offline assembly
 
-- [ ] Add the acquire script (network on) and the assemble script (network off):
+- [x] Add the acquire script (network on) and the assemble script (network off):
       expand pinned CPython, `pip install --no-index --find-links wheelhouse
       --require-hashes --no-deps --target python/Lib/site-packages`.
-- [ ] Write `python312._pth` with `import site` and no user-site.
-- [ ] Rewrite `build-runtime.ps1`: drop the `python.exe`/`*.dll`/`*.whl`
+- [x] Write `python312._pth` with `import site` and no user-site.
+- [x] Rewrite `build-runtime.ps1`: drop the `python.exe`/`*.dll`/`*.whl`
       rejection (`:185`), keep the weight rejection, emit per-variant packs.
-- [ ] Assemble twice and diff digests to prove reproducibility.
+- [x] Assemble twice and diff digests to prove reproducibility.
 
 Validation: two assemblies produce identical digests for all non-timestamp
 files; `verify_runtime_manifest` passes on both.
+
+Done. Acquisition and assembly are now separate entry points:
+
+- `resolve_locks.py` resolves exact wheel URLs/digests and pins CPython/MSYS2
+  sources; it decodes percent-escaped wheel basenames (critical for
+  `torch-2.11.0+cu128.whl`).
+- `fetch_wheelhouse.py` downloads each exact wheel, supports resumable TLS
+  retries, verifies SHA-256, and writes a variant-specific manifest.
+- `assemble_runtime.py --fetch-sources` acquires pinned non-wheel archives.
+- Plain `assemble_runtime.py` is cache-only and performs zero network I/O. A
+  missing or tampered source archive fails closed before publication.
+
+Both complete bundles now validate:
+
+- CPU: 69 packages/wheels, 18 source archives; 188 MiB wheelhouse; 828 MiB
+  assembled runtime.
+- cu128: 69 packages/wheels, 18 source archives; 2.7 GiB wheelhouse; 4.5 GiB
+  assembled runtime. On the current GPU host it reports
+  `torch==2.11.0+cu128`, CUDA build 12.8, `cuda_available=True`.
+
+The high-fidelity cairosvg path is proven: 19 MSYS2 DLLs are extracted from
+pinned archives and copied beside `python.exe`; `cairosvg==2.9.0` imports and
+SVG→PNG conversion succeeds with PATH/system Python removed.
+
+Fresh CPU assemblies after final lock/provenance changes had byte-identical
+23,476-file manifests, including `python.source_sha256` and digests of all
+three consumed lock files. The verifier now proves those metadata digests match
+the lock files inventoried inside the pack.
+
+Windows MAX_PATH exposed three independent wrapper bugs and each now has a
+fail-safe path: pip installs under short `.stage-<variant>`, all recursive
+verification/compression happens before rename, and an existing long display
+path is shortened to `.trash-<variant>` before deletion. ZIPs publish from a
+`.partial` name only after compression succeeds; checksum/publication failures
+remove partial ZIPs and renamed trees rather than leaving publishable debris.
+
+pip's Windows console launchers and their `dist-info/RECORD` digests are
+nondeterministic. They are build artifacts unused by FigureSmith, so assembly
+removes them along with `__pycache__`; two assemblies are then byte-identical.
+Runtime launches must use `-B` / `PYTHONDONTWRITEBYTECODE=1` (Stage 6 sidecar)
+because embeddable `-I` ignores that environment variable before startup and a
+`sitecustomize.py` policy is itself byte-compiled before it can set the flag.
+
+Automated coverage: focused Runtime V1 tests plus full suite, **313 passed**;
+Python compile checks and `git diff --check` pass. One existing Starlette
+`httpx` deprecation warning remains.
 
 ## Stage 6 — Sidecar and desktop
 

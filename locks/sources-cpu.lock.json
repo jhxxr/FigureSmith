@@ -1,0 +1,194 @@
+{
+  "native_dlls": [
+    "libcairo-2.dll",
+    "libfontconfig-1.dll",
+    "libfreetype-6.dll",
+    "libpixman-1-0.dll",
+    "libpng16-16.dll",
+    "zlib1.dll",
+    "libbz2-1.dll",
+    "libbrotlicommon.dll",
+    "libbrotlidec.dll",
+    "libexpat-1.dll",
+    "libgraphite2.dll",
+    "libharfbuzz-0.dll",
+    "libgcc_s_seh-1.dll",
+    "libstdc++-6.dll",
+    "libglib-2.0-0.dll",
+    "libintl-8.dll",
+    "libwinpthread-1.dll",
+    "libiconv-2.dll",
+    "libpcre2-8-0.dll"
+  ],
+  "product": "FigureSmith",
+  "runtime": {
+    "cuda": "cpu",
+    "platform": "win_amd64",
+    "python": "3.12"
+  },
+  "schema": 1,
+  "sources": [
+    {
+      "kind": "archive",
+      "license": "PSF-2.0",
+      "name": "cpython-embeddable",
+      "sha256": "4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3",
+      "size_bytes": 11133606,
+      "url": "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip",
+      "version": "3.12.10"
+    },
+    {
+      "kind": "archive",
+      "license": "LGPL-2.1-only OR MPL-1.1",
+      "name": "msys2-cairo",
+      "sha256": "1487120562e42601a8462d9953098f685c513999a2e472a3524fa96434be3290",
+      "size_bytes": 897625,
+      "url": "https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-cairo-1.18.4-4-any.pkg.tar.zst",
+      "version": "1.18.4-4"
+    },
+    {
+      "kind": "archive",
+      "license": "MIT",
+      "name": "msys2-fontconfig",
+      "sha256": "dfba8c17600314f2f6fb11b8b963539d89b66d1953ed20a62286bea27b520bee",
+      "size_bytes": 303049,
+      "url": "https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-fontconfig-2.18.2-1-any.pkg.tar.zst",
+      "version": "2.18.2-1"
+    },
+    {
+      "kind": "archive",
+      "license": "FTL OR GPL-2.0-or-later",
+      "name": "msys2-freetype",
+      "sha256": "b3e310f457c90348fd14b8c1085e9c036016d168812a657fec21f496f7e3de99",
+      "size_bytes": 630015,
+      "url": "https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-freetype-2.14.3-1-any.pkg.tar.zst",
+      "version": "2.14.3-1"
+    },
+    {
+      "kind": "archive",
+      "license": "MIT",
+      "name": "msys2-pixman",
+      "sha256": "435715dd1ca4c55873cf3c38d644615196bc2d238e3366f8ff81cc0811260eb2",
+      "size_bytes": 358460,
+      "url": "https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-pixman-0.46.4-3-any.pkg.tar.zst",
+      "version": "0.46.4-3"
+    },
+    {
+      "kind": "archive",
+      "license": "Libpng",
+      "name": "msys2-libpng",
+      "sha256": "d8ae6066f99b3a04b83b8013b554a26a205d7e68580b80823c173ed045ba76a5",
+      "size_bytes": 409510,
+      "url": "https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-libpng-1.6.58-1-any.pkg.tar.zst",
+      "version": "1.6.58-1"
+    },
+    {
+      "kind": "archive",
+      "license": "Zlib",
+      "name": "msys2-zlib",
+      "sha256": "9e75842a070ba648e986e12424e1c92c9d7d77200e85f6a34eeb600819f2e694",
+      "size_bytes": 112476,
+      "url": "https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-zlib-1.3.2-2-any.pkg.tar.zst",
+      "version": "1.3.2-2"
+    },
+    {
+      "kind": "archive",
+      "license": "bzip2-1.0.6",
+      "name": "msys2-bzip2",
+      "sha256": "653ec97c18dc139ca94e2b4b9d161a9b4d9e77ceb18dfb064eb95ef2a71171b6",
+      "size_bytes": 93091,
+      "url": "https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-bzip2-1.0.8-3-any.pkg.tar.zst",
+      "version": "1.0.8-3"
+    },
+    {
+      "kind": "archive",
+      "license": "MIT",
+      "name": "msys2-brotli",
+      "sha256": "f5f2f7e723a08378241d15f0537386950c1a48e2d82bc47bedd632bd61852aba",
+      "size_bytes": 455164,
+      "url": "https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-brotli-1.2.0-1-any.pkg.tar.zst",
+      "version": "1.2.0-1"
+    },
+    {
+      "kind": "archive",
+      "license": "MIT",
+      "name": "msys2-expat",
+      "sha256": "9f25550c738b7695164f4ea237af40512d7c63b4cd97aa417f3e0214930aca4f",
+      "size_bytes": 194137,
+      "url": "https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-expat-2.8.2-1-any.pkg.tar.zst",
+      "version": "2.8.2-1"
+    },
+    {
+      "kind": "archive",
+      "license": "LGPL-2.1-or-later",
+      "name": "msys2-graphite2",
+      "sha256": "6ad20d6c16e559f7c4b06fe71248e1201c7edf494d04e5721ed7f9b3f7fd1f74",
+      "size_bytes": 153194,
+      "url": "https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-graphite2-1.3.15-1-any.pkg.tar.zst",
+      "version": "1.3.15-1"
+    },
+    {
+      "kind": "archive",
+      "license": "MIT",
+      "name": "msys2-harfbuzz",
+      "sha256": "d378464a57f52e52c6016822bf718c6d93c2783c4f778f2b685da6008a969632",
+      "size_bytes": 2181284,
+      "url": "https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-harfbuzz-14.2.1-1-any.pkg.tar.zst",
+      "version": "14.2.1-1"
+    },
+    {
+      "kind": "archive",
+      "license": "GPL-3.0-or-later WITH GCC-exception-3.1",
+      "name": "msys2-gcc-libs",
+      "sha256": "aa560f5438c35b71c3e7b24fd5becbca028f70c5b4d1f1697a86ff80fec947da",
+      "size_bytes": 1153552,
+      "url": "https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-gcc-libs-16.1.0-5-any.pkg.tar.zst",
+      "version": "16.1.0-5"
+    },
+    {
+      "kind": "archive",
+      "license": "LGPL-2.1-or-later",
+      "name": "msys2-gettext-runtime",
+      "sha256": "be68d7f260633284b910c588c6d82ee304a81c8817a686d2cd9df83f872c27af",
+      "size_bytes": 427276,
+      "url": "https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-gettext-runtime-1.0-1-any.pkg.tar.zst",
+      "version": "1.0-1"
+    },
+    {
+      "kind": "archive",
+      "license": "LGPL-2.1-or-later",
+      "name": "msys2-glib2",
+      "sha256": "5aa850934d0216f5b7237bd54c3ec660ebfc3a42fd992bc7abbd611bd9cc7663",
+      "size_bytes": 5402063,
+      "url": "https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-glib2-2.88.3-1-any.pkg.tar.zst",
+      "version": "2.88.3-1"
+    },
+    {
+      "kind": "archive",
+      "license": "MIT",
+      "name": "msys2-libwinpthread",
+      "sha256": "16bf944184656c6976b3c8b9ca872da49560d8b7cced36a63fe6638c6e63ae45",
+      "size_bytes": 31477,
+      "url": "https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-libwinpthread-14.0.0.r220.gd999af622-1-any.pkg.tar.zst",
+      "version": "14.0.0.r220.gd999af622-1"
+    },
+    {
+      "kind": "archive",
+      "license": "LGPL-2.1-or-later",
+      "name": "msys2-libiconv",
+      "sha256": "21e334d0911f25de75d3e18e0697648bcecfa9658256d600cad0827d719c2f35",
+      "size_bytes": 745957,
+      "url": "https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-libiconv-1.19-1-any.pkg.tar.zst",
+      "version": "1.19-1"
+    },
+    {
+      "kind": "archive",
+      "license": "BSD-3-Clause",
+      "name": "msys2-pcre2",
+      "sha256": "7c9e3cd47af02a096c0c1810d1021f63c5fb1d22dbec91fa019d8b37eda00d98",
+      "size_bytes": 1435271,
+      "url": "https://repo.msys2.org/mingw/mingw64/mingw-w64-x86_64-pcre2-10.47-1-any.pkg.tar.zst",
+      "version": "10.47-1"
+    }
+  ]
+}

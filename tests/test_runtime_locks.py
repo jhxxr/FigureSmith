@@ -11,10 +11,10 @@ import pytest
 from figuresmith.runtime.locks import (
     REQUIREMENTS_LOCK_NAME,
     SUPPORTED_VARIANTS,
-    WHEELHOUSE_MANIFEST_NAME,
     RuntimeLockError,
     render_pip_requirements,
     sources_lock_name,
+    wheelhouse_manifest_name,
     requirements_lock_name,
     validate_lock_bundle,
     validate_requirements_lock,
@@ -91,7 +91,7 @@ def _write_bundle(tmp_path: Path, variant: str = "cu128") -> tuple[Path, Path]:
         },
     )
     _write_json(
-        lock_root / WHEELHOUSE_MANIFEST_NAME,
+        lock_root / wheelhouse_manifest_name(variant),
         {
             "schema": 1,
             "product": "FigureSmith",
@@ -150,7 +150,7 @@ def test_wheelhouse_verification_rejects_tamper_and_unlisted_files(
 ) -> None:
     lock_root, wheelhouse = _write_bundle(tmp_path)
     manifest = json.loads(
-        (lock_root / WHEELHOUSE_MANIFEST_NAME).read_text(encoding="utf-8")
+        (lock_root / wheelhouse_manifest_name("cu128")).read_text(encoding="utf-8")
     )
     validate_wheelhouse_manifest(manifest)
 
@@ -168,7 +168,7 @@ def test_wheelhouse_verification_rejects_tamper_and_unlisted_files(
 def test_wheelhouse_manifest_rejects_weight_like_path(tmp_path: Path) -> None:
     lock_root, _ = _write_bundle(tmp_path)
     manifest = json.loads(
-        (lock_root / WHEELHOUSE_MANIFEST_NAME).read_text(encoding="utf-8")
+        (lock_root / wheelhouse_manifest_name("cu128")).read_text(encoding="utf-8")
     )
     manifest["files"][0]["path"] = "models/sam3.pt"
     with pytest.raises(RuntimeLockError, match="forbidden cache/data segment"):

@@ -17,7 +17,8 @@ FigureSmith-Runtime-Windows-{cpu|cu128}-<version>/
 ```
 
 No `python -m pip`, no wheels, no venv, no `requirements-models.txt` install step
-on the target machine.
+on the target machine. The release sidecar invokes embedded Python with `-B` so
+imports cannot create bytecode caches inside the immutable manifested tree.
 
 ## Interpreter isolation
 
@@ -46,10 +47,10 @@ Three committed artifacts per variant, all validated by the existing `locks.py`:
 
 - `requirements-win-py312-<variant>.lock.json` — exact version, wheel filename,
   HTTPS URL, SHA-256, wheel tags, license per distribution.
-- `sources.lock.json` — CPython embeddable archive, SAM3 source revision, the
-  MSYS2 cairo DLL chain, and any non-wheel input, each with SHA-256; git sources
-  need a full 40-hex commit.
-- `wheelhouse-manifest.json` — inventory of the acquired `.whl` files.
+- `sources-<variant>.lock.json` — CPython embeddable archive, the MSYS2 cairo
+  DLL chain, and any non-wheel input, each with SHA-256; git sources need a full
+  40-hex commit.
+- `wheelhouse-<variant>.manifest.json` — inventory of the acquired `.whl` files.
 
 ### Native libraries
 

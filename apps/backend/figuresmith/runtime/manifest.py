@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import re
+import sys
 import tempfile
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping
@@ -79,12 +80,19 @@ def _relative_path(root: Path, path: Path) -> str:
 def _forbidden_reason(root: Path, path: Path) -> str | None:
     relative = path.relative_to(root)
     parts = [part.lower() for part in relative.parts]
+    in_site_packages = SITE_PACKAGES_DIR.lower().split("/") == parts[:3]
     # Weight detection is scoped to the shipped site-packages tree so that an
     # installed package's .pth hooks and non-model .bin payload are allowed
     # there, while a checkpoint anywhere in the pack is still refused.
     if is_weight_file(path, site_packages_root=root / SITE_PACKAGES_DIR):
         return "weight-like file"
-    if any(part in _FORBIDDEN_DIR_NAMES for part in parts):
+    # Generic names such as "uploads" are valid Python package namespaces
+    # (openai ships resources/uploads and types/uploads). Mutable-data names are
+    # forbidden outside site-packages; real caches remain forbidden everywhere.
+    universally_forbidden = _FORBIDDEN_DIR_NAMES - {"uploads", "outputs"}
+    if any(part in universally_forbidden for part in parts):
+        return "cache, build, or mutable-data directory"
+    if not in_site_packages and any(part in {"uploads", "outputs"} for part in parts):
         return "cache, build, or mutable-data directory"
     if len(parts) >= 3 and parts[:3] == ["app", "resources", "models"]:
         return "model staging directory"
@@ -142,9 +150,10 @@ def build_runtime_manifest(
     version: str,
     variant: str,
     python_version: str,
+    python_source_sha256: str,
     platform: str = "Windows",
     arch: str = "x86_64",
-    locks: Mapping[str, str] | None = None,
+    locks: Mapping[str, str],
 ) -> dict[str, Any]:
     """Build a deterministic manifest for a self-contained runtime pack."""
     if variant not in SUPPORTED_VARIANTS:
@@ -154,6 +163,25 @@ def build_runtime_manifest(
         )
     if not isinstance(python_version, str) or not python_version.strip():
         raise RuntimeManifestError("python_version is required")
+    if (
+        not isinstance(python_source_sha256, str)
+        or not _SHA256_RE.fullmatch(python_source_sha256)
+    ):
+        raise RuntimeManifestError("python_source_sha256 must be a lowercase SHA-256 digest")
+    required_locks = {"requirements", "sources", "wheelhouse"}
+    if (
+        not isinstance(locks, Mapping)
+        or set(locks) != required_locks
+        or not all(
+            isinstance(key, str)
+            and isinstance(value, str)
+            and _SHA256_RE.fullmatch(value)
+            for key, value in locks.items()
+        )
+    ):
+        raise RuntimeManifestError(
+            "locks must contain requirements, sources, and wheelhouse SHA-256 digests"
+        )
 
     runtime_root = _root_dir(root)
     files = _iter_runtime_files(runtime_root)
@@ -181,15 +209,17 @@ def build_runtime_manifest(
         "variant": variant,
         "platform": str(platform),
         "arch": str(arch),
-        "python": {"version": str(python_version)},
+        "python": {
+            "version": str(python_version),
+            "source_sha256": python_source_sha256,
+        },
         "runtime_complete": True,
         "contains_weights": False,
         "contains_cache": False,
         "file_count": len(entries),
         "files": entries,
+        "locks": {str(key): str(value) for key, value in sorted(locks.items())},
     }
-    if locks:
-        payload["locks"] = {str(key): str(value) for key, value in sorted(locks.items())}
     return payload
 
 
@@ -199,9 +229,10 @@ def write_runtime_manifest(
     version: str,
     variant: str,
     python_version: str,
+    python_source_sha256: str,
     platform: str = "Windows",
     arch: str = "x86_64",
-    locks: Mapping[str, str] | None = None,
+    locks: Mapping[str, str],
     output: Path | str | None = None,
 ) -> Path:
     """Write a runtime manifest atomically and return its canonical path."""
@@ -222,6 +253,7 @@ def write_runtime_manifest(
         version=version,
         variant=variant,
         python_version=python_version,
+        python_source_sha256=python_source_sha256,
         platform=platform,
         arch=arch,
         locks=locks,
@@ -281,6 +313,11 @@ def _validate_manifest_shape(manifest: Mapping[str, Any]) -> list[dict[str, Any]
     python = manifest.get("python")
     if not isinstance(python, Mapping) or not str(python.get("version", "")).strip():
         raise RuntimeManifestError("runtime manifest python.version is missing")
+    source_sha256 = python.get("source_sha256")
+    if not isinstance(source_sha256, str) or not _SHA256_RE.fullmatch(source_sha256):
+        raise RuntimeManifestError(
+            "runtime manifest python.source_sha256 is missing or invalid"
+        )
     if manifest.get("runtime_complete") is not True:
         raise RuntimeManifestError(
             "runtime manifest does not declare a self-contained runtime"
@@ -294,14 +331,21 @@ def _validate_manifest_shape(manifest: Mapping[str, Any]) -> list[dict[str, Any]
             "runtime manifest does not prove contains_cache=false"
         )
     locks = manifest.get("locks")
-    if locks is not None and (
+    required_locks = {"requirements", "sources", "wheelhouse"}
+    if (
         not isinstance(locks, Mapping)
+        or set(locks) != required_locks
         or not all(
-            isinstance(key, str) and isinstance(value, str)
+            isinstance(key, str)
+            and isinstance(value, str)
+            and _SHA256_RE.fullmatch(value)
             for key, value in locks.items()
         )
     ):
-        raise RuntimeManifestError("runtime manifest locks must map name to digest")
+        raise RuntimeManifestError(
+            "runtime manifest locks must contain requirements, sources, and "
+            "wheelhouse SHA-256 digests"
+        )
 
     raw_files = manifest.get("files")
     if not isinstance(raw_files, list):
@@ -333,10 +377,23 @@ def _validate_manifest_shape(manifest: Mapping[str, Any]) -> list[dict[str, Any]
     missing = [name for name in REQUIRED_FILES if name not in paths]
     if not _has_required_file(paths, PYTHON_FILES):
         missing.append(" or ".join(PYTHON_FILES))
+    variant = str(manifest["variant"])
+    lock_paths = {
+        "requirements": f"locks/requirements-win-py312-{variant}.lock.json",
+        "sources": f"locks/sources-{variant}.lock.json",
+        "wheelhouse": f"locks/wheelhouse-{variant}.manifest.json",
+    }
+    entries_by_path = {entry["path"]: entry for entry in entries}
+    missing.extend(path for path in lock_paths.values() if path not in entries_by_path)
     if missing:
         raise RuntimeManifestError(
             "runtime manifest is missing required files: " + ", ".join(missing)
         )
+    for lock_name, relative in lock_paths.items():
+        if entries_by_path[relative]["sha256"] != locks[lock_name]:
+            raise RuntimeManifestError(
+                f"runtime manifest {lock_name} lock digest does not match {relative}"
+            )
     return entries
 
 
@@ -390,6 +447,30 @@ def verify_runtime_manifest(
         if _sha256_file(path) != entry["sha256"]:
             raise RuntimeManifestError(f"runtime file SHA-256 mismatch: {relative}")
     return dict(manifest)
+
+
+def _main(argv: list[str] | None = None) -> int:
+    """Verify a Runtime V1 manifest from build/release scripts."""
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Verify a FigureSmith runtime manifest")
+    parser.add_argument("manifest", type=Path)
+    parser.add_argument("root", type=Path, nargs="?", default=None)
+    args = parser.parse_args(argv)
+    try:
+        result = verify_runtime_manifest(args.manifest, args.root)
+    except RuntimeManifestError as exc:
+        print(f"runtime manifest verification failed: {exc}", file=sys.stderr)
+        return 2
+    print(
+        f"runtime manifest OK: schema={result['schema']} "
+        f"variant={result['variant']} files={result['file_count']}"
+    )
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover - exercised by build scripts
+    raise SystemExit(_main())
 
 
 __all__ = [

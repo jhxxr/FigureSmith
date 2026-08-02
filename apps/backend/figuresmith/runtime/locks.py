@@ -22,8 +22,14 @@ LOCK_SCHEMA = 1
 SUPPORTED_VARIANTS = ("cpu", "cu128")
 DEFAULT_VARIANT = "cu128"
 REQUIREMENTS_LOCK_NAME = "requirements-win-py312-cu128.lock.json"
-SOURCES_LOCK_NAME = "sources.lock.json"
-WHEELHOUSE_MANIFEST_NAME = "wheelhouse-manifest.json"
+SOURCES_LOCK_NAME = "sources-cu128.lock.json"
+
+
+def wheelhouse_manifest_name(variant: str = DEFAULT_VARIANT) -> str:
+    """Return the committed wheelhouse-manifest filename for a variant."""
+    if variant not in SUPPORTED_VARIANTS:
+        raise RuntimeLockError(f"unsupported runtime variant: {variant!r}")
+    return f"wheelhouse-{variant}.manifest.json"
 
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
 _HEX40 = re.compile(r"^[0-9a-f]{40}$")
@@ -366,7 +372,7 @@ def validate_lock_bundle(
     requirements_path = root / requirements_lock_name(variant)
     requirements = validate_requirements_lock(_read_json(requirements_path))
     sources = validate_sources_lock(_read_json(root / sources_lock_name(variant)))
-    wheelhouse_value = _read_json(root / WHEELHOUSE_MANIFEST_NAME)
+    wheelhouse_value = _read_json(root / wheelhouse_manifest_name(variant))
     wheelhouse = validate_wheelhouse_manifest(wheelhouse_value)
     # All three locks must agree on the variant they target.
     variants = {
@@ -427,7 +433,6 @@ __all__ = [
     "REQUIREMENTS_LOCK_NAME",
     "SOURCES_LOCK_NAME",
     "SUPPORTED_VARIANTS",
-    "WHEELHOUSE_MANIFEST_NAME",
     "RuntimeLockError",
     "render_pip_requirements",
     "requirements_lock_name",
@@ -437,4 +442,5 @@ __all__ = [
     "validate_sources_lock",
     "validate_wheelhouse_manifest",
     "verify_wheelhouse_files",
+    "wheelhouse_manifest_name",
 ]

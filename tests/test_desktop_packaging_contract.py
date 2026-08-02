@@ -51,15 +51,24 @@ def test_desktop_builder_requires_and_carries_application_runtime() -> None:
     assert "embedded runtime" not in script.lower()
 
 
-def test_runtime_builder_only_carries_application_and_dependency_guidance() -> None:
+def test_runtime_builder_consumes_locked_inputs_without_network_resolution() -> None:
     script = (ROOT / "scripts" / "build-runtime.ps1").read_text(encoding="utf-8")
 
-    assert "requirements-runtime.txt" in script
+    assert "assemble_runtime.py" in script
+    assert "--wheelhouse" in script
+    assert "--lock-root" in script
+    assert "--variant" in script
+    assert ".stage-$Variant" in script
+    assert '"$zipPath.partial"' in script
+    assert "Move-Item -LiteralPath $zipStagePath" in script
+    assert "$published = $true" in script
+    assert "runtime_complete=true" in script
     assert "Invoke-WebRequest" not in script
     assert "Download-Verified" not in script
     assert "Expand-Archive" not in script
     assert "git clone" not in script
-    assert "-Complete" not in script
+    assert "pip install" not in script
+    assert "requirements-models.txt" not in script
 
 
 def test_desktop_uses_a_separate_managed_python_environment() -> None:

@@ -18,7 +18,7 @@ The Tauri process:
 | **Rust** | `rustup` + `cargo` (MSVC toolchain on Windows; development/build only) |
 | **Node.js** | 20+ with `npm` (development/build only) |
 | **WebView2** | Preinstalled on modern Windows 11; bootstrapper used if missing |
-| **Runtime V1** | Releases provide MSI/Setup installers plus a separate verified CPU Runtime V1 archive to place beside `FigureSmith.exe` |
+| **Runtime V1** | MSI/Setup installs the verified CPU Runtime V1; a separate CPU Runtime ZIP is available for repair |
 
 Optional env:
 
@@ -52,13 +52,14 @@ npm run tauri -- dev
 # or: npm run tauri -- build
 ```
 
-Release MSI/Setup artifacts contain the desktop shell and fail closed until a
-verified schema-2 CPU Runtime V1 companion from the separate Runtime archive is
-installed beside `FigureSmith.exe`. That archive contains embedded CPython 3.12,
-hash-locked site-packages, and native DLLs. No target-machine pip, venv creation,
-system Python, or online dependency installation is used. Model weights remain
-external and are imported through the Models page. The cu128 lock is retained for
-manual maintainer builds, but is not part of the published release.
+Release MSI/Setup artifacts include the verified schema-2 CPU Runtime V1,
+including embedded CPython 3.12, hash-locked site-packages, and native DLLs.
+The separate CPU Runtime ZIP is retained as an optional repair/backup asset;
+users do not need to extract or rename a sibling `runtime` directory. No
+target-machine pip, venv creation, system Python, or online dependency
+installation is used. Model weights remain external and are imported through
+the Models page. The cu128 lock is retained for manual maintainer builds, but
+is not part of the published release and no Portable package is produced.
 
 ## Tauri commands
 
@@ -85,7 +86,10 @@ Placeholder solid-color icons under `src-tauri/icons/` (not the upstream AutoFig
 
 ## Troubleshooting
 
-- **Sidecar startup failure**: confirm that the verified CPU `runtime` companion is beside `FigureSmith.exe`; release mode never falls back to system Python.
+- **Runtime missing or invalid**: rerun the FigureSmith Setup/MSI installer. If
+  the installation needs repair, download the matching CPU Runtime ZIP and
+  verify its published checksum; release mode never falls back to system
+  Python or a sibling directory.
 - **Model environment incomplete**: the editor can still open; import the required model weights through the Models page.
 - **Sidecar health timeout**: verify the Runtime V1 manifest and checksum before retrying.
 - **Auth 401 in browser-only mode**: browser dev should use `./scripts/run-backend.ps1` without a session token, or set `FIGURESMITH_DISABLE_AUTH=1` (tests only).

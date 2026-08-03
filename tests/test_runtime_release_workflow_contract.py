@@ -120,6 +120,8 @@ def test_release_notes_describe_cpu_runtime_and_external_models() -> None:
     assert "Models are external" in workflow
     assert "download and import them on the target machine" in workflow
     assert "Self-contained CPU Runtime V1" in workflow
+    assert "MSI and Setup installers include" in workflow
+    assert "checksum-verified repair asset" in workflow
     assert "publishes the CPU runtime only" in workflow
     assert "not uploaded as a release asset" in workflow
 

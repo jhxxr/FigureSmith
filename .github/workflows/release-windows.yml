@@ -237,6 +237,7 @@ jobs:
           if ($manifest.schema -ne 2 -or $manifest.variant -ne "cpu" -or $manifest.runtime_complete -ne $true) { throw "Downloaded runtime is not a complete CPU Runtime V1 pack" }
           if (-not (Test-Path (Join-Path $target "python/python.exe") -PathType Leaf)) { throw "Embedded CPU Python is missing" }
           if (-not (Test-Path (Join-Path $target "locks/requirements-win-py312-cpu.lock.json") -PathType Leaf)) { throw "CPU requirements lock is missing" }
+          Write-Host "Staged CPU Runtime V1 for the Tauri installer resource: $target"
 
       - name: Install desktop npm deps
         working-directory: apps/desktop
@@ -325,7 +326,7 @@ jobs:
               "---\n\n"
               "**Models are external.** SAM3 / RMBG checkpoints are not included; "
               "download and import them on the target machine after installation.\n"
-              "**Self-contained CPU Runtime V1:** the Windows runtime archive includes embedded CPython 3.12, hash-locked CPU packages, and native runtime DLLs. No system Python, venv creation, pip, or online dependency installation is needed on the target machine. "
+              "**Self-contained CPU Runtime V1:** the MSI and Setup installers include embedded CPython 3.12, hash-locked CPU packages, and native runtime DLLs. The separate CPU Runtime ZIP is retained as a checksum-verified repair asset. No system Python, venv creation, pip, or online dependency installation is needed on the target machine. "
               "This release publishes the CPU runtime only; the cu128 lock remains available for maintainer/manual builds but is not uploaded as a release asset. "
               "A supported WebView2 and Visual C++ runtime are still required.\n"
               "Source license ≠ third-party model weight licenses.\n"

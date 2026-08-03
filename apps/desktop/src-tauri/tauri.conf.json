@@ -28,7 +28,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "resources": [],
+    "resources": ["runtime"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -42,7 +42,7 @@
         "type": "downloadBootstrapper"
       }
     },
-    "longDescription": "FigureSmith (图匠) local-first scientific figure desktop shell. MSI and Setup releases locate a separately published verified Runtime V1 pack beside the application. Model weights remain external and user-imported.",
+    "longDescription": "FigureSmith (图匠) local-first scientific figure desktop shell. MSI and Setup releases include the verified CPU Runtime V1; the Runtime ZIP remains available for repair. Model weights remain external and user-imported.",
     "shortDescription": "FigureSmith desktop shell",
     "category": "Productivity"
   },

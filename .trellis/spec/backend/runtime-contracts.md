@@ -116,14 +116,19 @@ into the immutable vendor tree.
 - Trigger: the Windows application pack, Tauri sidecar resolver, backend
   startup probe, model diagnostics, and welcome/splash UI cross the packaging,
   Rust, Python, and frontend boundaries.
-- Owner: `apps/desktop/src-tauri/src/sidecar.rs` verifies and launches the
-  companion Runtime V1 tree; `apps/backend/figuresmith/api/system_routes.py`
+- Owner: `apps/desktop/src-tauri/src/sidecar.rs` locates the Tauri-installed and
+  verifies/launches the Runtime V1 tree; `apps/backend/figuresmith/api/system_routes.py`
   reports package/GPU state; `scripts/build-runtime.ps1` assembles the
   hash-locked CPU or cu128 tree from maintainer-side inputs.
 
 ### 2. Signatures
 
 - `resolve_release_runtime_root(resource_dir: Option<PathBuf>) -> Result<PathBuf, String>`
+- `SidecarState::start_with_progress(runtime_root: PathBuf, callback) -> Result<SidecarState, String>`;
+  the callback reports `Verifying { checked_files, total_files }` and
+  `Starting`.
+- `startup-status -> {phase, code?, checked_files?, total_files?, detail?}`;
+  phases are `locating`, `verifying`, `starting`, `ready`, and `error`.
 - `GET /api/system/status -> {python, python_executable, python_supported,
   dependencies, gpu_available, sam3_loaded, rmbg_loaded, ...}`
 - `probe_dependency_status() -> {bootstrap_ready, models_ready,
@@ -140,9 +145,16 @@ into the immutable vendor tree.
 - `python312._pth` restricts the packaged interpreter to the shipped zip,
   interpreter directory, and `Lib/site-packages`; the sidecar also removes
   `PYTHONPATH`/`PYTHONHOME` and passes `-B` before `main.py`.
-- Release mode resolves only through Tauri Resource paths. It never falls back
-  to PATH, repository files, or system Python. A missing, extra, tampered,
-  wrong-version, or incomplete runtime file fails before sidecar spawn.
+- Release mode resolves only through the Tauri `resource_dir`, accepting its
+  direct or nested `runtime/` manifest layout. It never accepts a sibling
+  directory beside the executable or falls back to PATH, repository files, or
+  system Python. A missing, extra, tampered, wrong-version, or incomplete
+  runtime file fails before sidecar spawn.
+- `resolve_release_runtime_root()` performs only root discovery. The sidecar
+  start path performs exactly one complete manifest/inventory/hash verification
+  before emitting `starting` and spawning Python. Blocking verification and
+  readiness work runs off the Tauri setup/UI thread; the Splash consumes the
+  typed `startup-status` event.
 - Release startup performs no venv creation, pip install, dependency resolve,
   or network access. Missing optional model packages do not block the editor;
   status separates them from bootstrap packages while model weights remain
@@ -160,6 +172,9 @@ into the immutable vendor tree.
 | Condition | Result |
 |---|---|
 | Release resource directory missing | startup fails before sidecar spawn; no repo/PATH fallback |
+| Runtime is missing from Tauri resources | Splash reports `runtime-missing` and directs the user to rerun Setup/MSI |
+| Runtime manifest/hash/inventory is invalid | Splash reports `runtime-invalid`; sidecar is not spawned |
+| Runtime verifies but `/api/desktop/ready` fails | Splash reports `backend-failed`; the child is cleaned up |
 | Build interpreter is not CPython 3.12 | assembly fails before creating a publishable tree |
 | Only optional model package/import is missing | editor starts; `/api/system/status` reports `missing_models` |
 | Torch native import aborts or times out | backend remains alive; GPU is unavailable with redacted `probe_error` |
@@ -168,10 +183,10 @@ into the immutable vendor tree.
 
 ### 5. Good/Base/Bad Cases
 
-- Good: a verified CPU companion beside `FigureSmith.exe` starts with no system
-  Python and reports missing optional model imports without blocking the editor.
+- Good: Setup/MSI installs a verified CPU Runtime under the Tauri resource
+  directory; startup hashes it once, then launches only its embedded Python.
 - Base: a developer launch uses an explicit external Python while release mode
-  still requires the embedded interpreter from the verified companion.
+  still requires the embedded interpreter from the installed Tauri resource.
 - Bad: a stale repository `PYTHONPATH`, a missing/tampered manifest entry, or a
   release pack without `python/python.exe`; startup rejects it.
 
@@ -184,9 +199,10 @@ into the immutable vendor tree.
   builder-version rejection, system status commands, and subprocess-isolated
   GPU failure paths.
 - Frontend checks assert preinstalled-runtime messaging and bilingual
-  splash/welcome content.
+  splash/welcome content, plus the `startup-status` phase/error contract.
 - PowerShell/CI checks assert the CPU runtime contains the embedded interpreter,
-  consumed locks, and no loose wheels/weights/caches.
+  consumed locks, and no loose wheels/weights/caches; the Tauri bundle retains
+  the staged Runtime resource and publishes MSI/Setup only.
 
 ### 7. Wrong vs Correct
 
@@ -212,3 +228,19 @@ return parse_probe_or_report_error(completed)
 
 A native extension can terminate the host interpreter without raising a Python
 exception, so model/GPU probing must be process-isolated.
+
+#### Startup resource resolution
+
+```rust
+// Wrong: a release fallback that lets users manually place a sibling pack.
+let mut candidates = vec![resource_dir];
+candidates.push(current_exe()?.parent()?.to_path_buf());
+
+// Correct: release accepts only Tauri's installed resource directory.
+let resource = resource_dir.ok_or("installed Runtime resource is missing")?;
+let runtime_root = packaged_runtime_root(&resource)?;
+```
+
+The sibling fallback is especially misleading after Runtime is embedded in the
+installer: it can make a modified directory appear to repair a broken install
+and bypass the one-step installation contract.

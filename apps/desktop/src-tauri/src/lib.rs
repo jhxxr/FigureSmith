@@ -7,13 +7,17 @@ use commands::{
     build_initialization_script, import_rmbg_archive, import_rmbg_folder, import_sam3_model,
     open_models_directory,
 };
-use sidecar::{resolve_runtime_root, SidecarState};
+use serde::Serialize;
+use sidecar::{resolve_runtime_root, SidecarState, StartupProgress};
+use std::sync::Once;
 use tauri::{
     ipc::CapabilityBuilder,
     menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
     webview::{NewWindowResponse, PageLoadEvent, WebviewWindowBuilder},
     Emitter, Manager, RunEvent, Url, WebviewUrl, WindowEvent,
 };
+
+static STARTUP_SCHEDULED: Once = Once::new();
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -26,9 +30,13 @@ pub fn run() {
             import_rmbg_folder,
             open_models_directory,
         ])
+        .on_page_load(|webview, payload| {
+            if webview.label() == "splash" && payload.event() == PageLoadEvent::Finished {
+                schedule_startup(webview.app_handle().clone());
+            }
+        })
         .setup(|app| {
             // Build menu: Models import actions (MVP without redesigning vendor UI).
-            let handle = app.handle().clone();
             let menu = build_menu(app.handle())?;
             app.set_menu(menu)?;
 
@@ -79,45 +87,6 @@ pub fn run() {
                 }
             });
 
-            // Start Python sidecar before the remote UI becomes useful.
-            let resource_dir = handle.path().resource_dir().ok();
-            let repo = match resolve_runtime_root(resource_dir) {
-                Ok(repo) => repo,
-                Err(err) => {
-                    report_startup_error(app.handle(), &err);
-                    return Ok(());
-                }
-            };
-            eprintln!("[FigureSmith] repo root: {}", repo.display());
-            let sidecar = match SidecarState::start(repo) {
-                Ok(sidecar) => sidecar,
-                Err(err) => {
-                    eprintln!("[FigureSmith] sidecar start failed: {err}");
-                    report_startup_error(app.handle(), &err);
-                    return Ok(());
-                }
-            };
-            let session = sidecar.session()?;
-            let app_for_monitor = handle.clone();
-            sidecar.start_liveness_monitor(move || {
-                eprintln!("[FigureSmith] closing remote UI after sidecar loss");
-                if let Some(main) = app_for_monitor.get_webview_window("main") {
-                    let _ = main.close();
-                }
-                app_for_monitor.exit(1);
-            });
-            app.manage(sidecar);
-
-            // Grant only the four native actions to the exact sidecar origin,
-            // then create the authenticated remote window with its bridge at
-            // document start. The bundled splash remains local-only.
-            if let Err(err) = create_remote_main(&handle, &session) {
-                if let Some(state) = app.try_state::<SidecarState>() {
-                    state.shutdown();
-                }
-                report_startup_error(app.handle(), &err.to_string());
-            }
-
             Ok(())
         });
 
@@ -144,12 +113,145 @@ pub fn run() {
     });
 }
 
-fn report_startup_error(app: &tauri::AppHandle, message: &str) {
+#[derive(Debug, Clone, Serialize)]
+struct StartupStatus {
+    phase: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    checked_files: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total_files: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    detail: Option<String>,
+}
+
+fn emit_startup_status(
+    app: &tauri::AppHandle,
+    phase: &str,
+    code: Option<&str>,
+    checked_files: Option<usize>,
+    total_files: Option<usize>,
+    detail: Option<&str>,
+) {
+    let _ = app.emit(
+        "startup-status",
+        StartupStatus {
+            phase: phase.to_string(),
+            code: code.map(str::to_string),
+            checked_files,
+            total_files,
+            detail: detail.map(|value| value.chars().take(500).collect()),
+        },
+    );
+}
+
+fn report_startup_error(app: &tauri::AppHandle, code: &str, message: &str) {
     // Startup errors are intentionally bounded and contain no environment or
     // session-token values. The local splash owns the user-visible rendering.
     let bounded = message.chars().take(500).collect::<String>();
     eprintln!("[FigureSmith] startup failed: {bounded}");
+    emit_startup_status(app, "error", Some(code), None, None, Some(&bounded));
     let _ = app.emit("sidecar-error", bounded);
+}
+
+fn schedule_startup(app: tauri::AppHandle) {
+    STARTUP_SCHEDULED.call_once(|| {
+        // Runtime hashing and the blocking sidecar readiness probe must not
+        // run on Tauri's setup/UI thread. Scheduling after the Splash page has
+        // loaded ensures its status listener can display even fast failures.
+        tauri::async_runtime::spawn_blocking(move || start_sidecar(app));
+    });
+}
+
+fn start_sidecar(app: tauri::AppHandle) {
+    emit_startup_status(&app, "locating", None, None, None, None);
+    let resource_dir = app.path().resource_dir().ok();
+    let runtime_root = match resolve_runtime_root(resource_dir) {
+        Ok(root) => root,
+        Err(err) => {
+            report_startup_error(&app, "runtime-missing", &err);
+            return;
+        }
+    };
+    eprintln!(
+        "[FigureSmith] runtime root located: {}",
+        runtime_root.display()
+    );
+
+    emit_startup_status(&app, "verifying", None, Some(0), None, None);
+    let progress_app = app.clone();
+    let sidecar =
+        match SidecarState::start_with_progress(runtime_root, move |progress| match progress {
+            StartupProgress::Verifying {
+                checked_files,
+                total_files,
+            } => emit_startup_status(
+                &progress_app,
+                "verifying",
+                None,
+                Some(checked_files),
+                Some(total_files),
+                None,
+            ),
+            StartupProgress::Starting => {
+                emit_startup_status(&progress_app, "starting", None, None, None, None)
+            }
+        }) {
+            Ok(sidecar) => sidecar,
+            Err(err) => {
+                report_startup_error(&app, classify_sidecar_error(&err), &err);
+                return;
+            }
+        };
+
+    let session = match sidecar.session() {
+        Ok(session) => session,
+        Err(err) => {
+            report_startup_error(&app, "backend-failed", &err);
+            return;
+        }
+    };
+    emit_startup_status(&app, "ready", None, None, None, None);
+
+    let main_thread_app = app.clone();
+    if let Err(err) = app.run_on_main_thread(move || {
+        main_thread_app.manage(sidecar);
+        if let Some(state) = main_thread_app.try_state::<SidecarState>() {
+            let app_for_monitor = main_thread_app.clone();
+            state.start_liveness_monitor(move || {
+                eprintln!("[FigureSmith] closing remote UI after sidecar loss");
+                if let Some(main) = app_for_monitor.get_webview_window("main") {
+                    let _ = main.close();
+                }
+                app_for_monitor.exit(1);
+            });
+        }
+
+        // Grant only the four native actions to the exact sidecar origin, then
+        // create the authenticated remote window. It stays hidden until its
+        // authenticated page has finished loading.
+        if let Err(err) = create_remote_main(&main_thread_app, &session) {
+            if let Some(state) = main_thread_app.try_state::<SidecarState>() {
+                state.shutdown();
+            }
+            report_startup_error(&main_thread_app, "backend-failed", &err.to_string());
+        }
+    }) {
+        report_startup_error(
+            &app,
+            "backend-failed",
+            &format!("startup handoff failed: {err}"),
+        );
+    }
+}
+
+fn classify_sidecar_error(message: &str) -> &'static str {
+    if message.starts_with("runtime invalid:") {
+        "runtime-invalid"
+    } else {
+        "backend-failed"
+    }
 }
 
 fn is_exact_sidecar_origin(url: &Url, api_base: &str) -> bool {

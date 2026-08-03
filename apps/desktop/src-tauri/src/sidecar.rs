@@ -20,6 +20,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 /// Always loopback for desktop spawn — refuse any other host.
 const BIND_HOST: &str = "127.0.0.1";
 const SSE_TICKET_TTL_SECS: u64 = 10 * 60;
+const RUNTIME_PROGRESS_INTERVAL: usize = 128;
 
 #[derive(Debug, Clone)]
 pub struct SessionInfo {
@@ -29,6 +30,15 @@ pub struct SessionInfo {
     pub token: String,
     /// Short-lived credential used only in the EventSource query string.
     pub sse_ticket: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StartupProgress {
+    Verifying {
+        checked_files: usize,
+        total_files: usize,
+    },
+    Starting,
 }
 
 pub struct SidecarState {
@@ -96,19 +106,33 @@ impl Drop for PendingChild {
 }
 
 impl SidecarState {
-    pub fn start(runtime_root: PathBuf) -> Result<Self, String> {
+    pub fn start_with_progress<F>(runtime_root: PathBuf, mut on_progress: F) -> Result<Self, String>
+    where
+        F: FnMut(StartupProgress),
+    {
         let port = find_free_port()?;
         let token = generate_token();
         let sse_ticket = generate_token();
         let sse_ticket_expires_at = unix_now_secs().saturating_add(SSE_TICKET_TTL_SECS);
-        let layout = resolve_runtime_layout(&runtime_root)?;
+        let layout = resolve_runtime_layout(&runtime_root)
+            .map_err(|err| format!("runtime invalid: {err}"))?;
+        if layout.release {
+            validate_runtime_manifest_with_progress(&layout.root, |checked_files, total_files| {
+                on_progress(StartupProgress::Verifying {
+                    checked_files,
+                    total_files,
+                });
+            })
+            .map_err(|err| format!("runtime invalid: {err}"))?;
+        }
+        on_progress(StartupProgress::Starting);
         let python = layout.python.clone();
         let main_py = layout.main_py.clone();
         let backend_dir = layout.backend_dir.clone();
         let vendor_dir = layout.vendor_dir.clone();
         let vendor_parent = vendor_dir
             .parent()
-            .ok_or_else(|| "vendor runtime path has no parent".to_string())?;
+            .ok_or_else(|| "runtime invalid: vendor runtime path has no parent".to_string())?;
         let pythonpath = format!(
             "{}{}{}{}{}",
             backend_dir.display(),
@@ -167,8 +191,9 @@ impl SidecarState {
                 let inherited = std::env::var_os("PATH").unwrap_or_default();
                 let mut paths = vec![python_dir.to_path_buf()];
                 paths.extend(std::env::split_paths(&inherited));
-                let joined = std::env::join_paths(paths)
-                    .map_err(|err| format!("cannot construct embedded runtime DLL path: {err}"))?;
+                let joined = std::env::join_paths(paths).map_err(|err| {
+                    format!("backend failed: cannot construct embedded runtime DLL path: {err}")
+                })?;
                 cmd.env("PATH", joined);
             }
         } else if let Some(value) = dev_mode.as_deref() {
@@ -209,12 +234,17 @@ impl SidecarState {
 
         let child = cmd
             .spawn()
-            .map_err(|e| format!("failed to spawn Python sidecar: {e}"))?;
+            .map_err(|e| format!("backend failed: failed to spawn Python sidecar: {e}"))?;
         let mut pending = PendingChild::new(child);
 
         // Drain stdout/stderr so the child cannot block on full pipes.
         // Redact token if it ever appears (should not).
-        if let Some(stdout) = pending.child_mut()?.stdout.take() {
+        if let Some(stdout) = pending
+            .child_mut()
+            .map_err(|err| format!("backend failed: {err}"))?
+            .stdout
+            .take()
+        {
             let token_for_redact = token.clone();
             let ticket_for_redact = sse_ticket.clone();
             thread::spawn(move || {
@@ -227,7 +257,12 @@ impl SidecarState {
                 }
             });
         }
-        if let Some(stderr) = pending.child_mut()?.stderr.take() {
+        if let Some(stderr) = pending
+            .child_mut()
+            .map_err(|err| format!("backend failed: {err}"))?
+            .stderr
+            .take()
+        {
             let token_for_redact = token.clone();
             let ticket_for_redact = sse_ticket.clone();
             thread::spawn(move || {
@@ -242,8 +277,18 @@ impl SidecarState {
         }
 
         let base = format!("http://{BIND_HOST}:{port}");
-        wait_for_ready(pending.child_mut()?, &base, &token, Duration::from_secs(90))?;
-        let child = pending.into_child()?;
+        wait_for_ready(
+            pending
+                .child_mut()
+                .map_err(|err| format!("backend failed: {err}"))?,
+            &base,
+            &token,
+            Duration::from_secs(90),
+        )
+        .map_err(|err| format!("backend failed: {err}"))?;
+        let child = pending
+            .into_child()
+            .map_err(|err| format!("backend failed: {err}"))?;
 
         eprintln!("[FigureSmith] sidecar ready at {base}/api/desktop/ready");
 
@@ -1138,7 +1183,13 @@ fn valid_sha256(value: &str) -> bool {
             .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
-fn validate_runtime_manifest(runtime_root: &Path) -> Result<(), String> {
+fn validate_runtime_manifest_with_progress<F>(
+    runtime_root: &Path,
+    mut on_progress: F,
+) -> Result<(), String>
+where
+    F: FnMut(usize, usize),
+{
     let manifest_path = runtime_root.join("runtime-manifest.json");
     let text = fs::read_to_string(&manifest_path).map_err(|err| {
         format!(
@@ -1322,7 +1373,9 @@ fn validate_runtime_manifest(runtime_root: &Path) -> Result<(), String> {
             missing, extra
         ));
     }
-    for (key, entry) in expected {
+    let total_files = expected.len();
+    on_progress(0, total_files);
+    for (index, (key, entry)) in expected.into_iter().enumerate() {
         let Some((actual_path, path)) = actual.get(&key) else {
             return Err(format!("runtime manifest file is missing: {}", entry.path));
         };
@@ -1335,8 +1388,17 @@ fn validate_runtime_manifest(runtime_root: &Path) -> Result<(), String> {
         if sha256_file(path)? != entry.sha256 {
             return Err(format!("runtime manifest SHA-256 mismatch: {}", entry.path));
         }
+        let checked_files = index + 1;
+        if checked_files == total_files || checked_files % RUNTIME_PROGRESS_INTERVAL == 0 {
+            on_progress(checked_files, total_files);
+        }
     }
     Ok(())
+}
+
+#[cfg(test)]
+fn validate_runtime_manifest(runtime_root: &Path) -> Result<(), String> {
+    validate_runtime_manifest_with_progress(runtime_root, |_, _| {})
 }
 
 fn packaged_runtime_root(base: &Path) -> Result<PathBuf, String> {
@@ -1366,9 +1428,6 @@ fn resolve_application_layout(
     runtime_root: PathBuf,
     release: bool,
 ) -> Result<RuntimeLayout, String> {
-    if release {
-        validate_runtime_manifest(&runtime_root)?;
-    }
     let (backend_dir, vendor_dir) = if runtime_root.join("app").join("backend").is_dir() {
         (
             runtime_root.join("app").join("backend"),
@@ -1430,29 +1489,27 @@ fn resolve_runtime_layout(base: &Path) -> Result<RuntimeLayout, String> {
     resolve_application_layout(base, false)
 }
 
-/// Resolve the application pack through the Tauri Resource directory.
+/// Locate the application pack through the Tauri Resource directory.
+///
+/// This function intentionally performs only cheap root discovery. Full
+/// Runtime V1 verification belongs to `SidecarState::start_with_progress` so
+/// one launch cannot hash the same pack twice.
 pub fn resolve_release_runtime_root(resource_dir: Option<PathBuf>) -> Result<PathBuf, String> {
     let mut candidates = Vec::new();
     if let Some(resource) = resource_dir {
         candidates.push(resource);
     }
-    if let Ok(executable) = std::env::current_exe() {
-        if let Some(parent) = executable.parent() {
-            candidates.push(parent.to_path_buf());
-        }
-    }
     let mut diagnostics = Vec::new();
     for candidate in candidates {
         match packaged_runtime_root(&candidate) {
             Ok(runtime_root) => {
-                validate_runtime_manifest(&runtime_root)?;
                 return Ok(runtime_root);
             }
             Err(error) => diagnostics.push(error),
         }
     }
     Err(format!(
-        "companion Runtime V1 pack is unavailable beside the application; refusing PATH, Python, and source fallback ({})",
+        "installed CPU Runtime V1 resource is unavailable; refusing sibling-directory, PATH, Python, and source fallback ({})",
         diagnostics.join("; ").chars().take(1200).collect::<String>()
     ))
 }
@@ -1639,7 +1696,39 @@ mod tests {
     #[test]
     fn release_requires_a_resource_directory() {
         let error = resolve_release_runtime_root(None).expect_err("resource is required");
-        assert!(error.contains("refusing PATH, Python, and source fallback"));
+        assert!(error.contains("refusing sibling-directory, PATH, Python, and source fallback"));
+    }
+
+    #[test]
+    fn release_resource_discovery_accepts_direct_and_nested_roots_without_hashing() {
+        let direct = temp_runtime_root("direct-resource");
+        write_runtime_fixture(&direct, "FigureSmith", env!("CARGO_PKG_VERSION"), 2);
+        std::fs::write(
+            direct.join("app/backend/main.py"),
+            b"tampered after build\n",
+        )
+        .expect("tamper fixture");
+        let discovered = resolve_release_runtime_root(Some(direct.clone()))
+            .expect("discovery does not hash the runtime");
+        assert_eq!(
+            discovered,
+            direct.canonicalize().expect("canonical direct root")
+        );
+        let error = validate_runtime_manifest(&direct).expect_err("tamper is rejected later");
+        assert!(error.contains("SHA-256 mismatch") || error.contains("size mismatch"));
+        let _ = std::fs::remove_dir_all(direct);
+
+        let nested_base = temp_runtime_root("nested-resource");
+        let nested = nested_base.join("runtime");
+        std::fs::create_dir_all(&nested).expect("nested resource root");
+        write_runtime_fixture(&nested, "FigureSmith", env!("CARGO_PKG_VERSION"), 2);
+        let discovered = resolve_release_runtime_root(Some(nested_base.clone()))
+            .expect("nested Tauri resource root");
+        assert_eq!(
+            discovered,
+            nested.canonicalize().expect("canonical nested root")
+        );
+        let _ = std::fs::remove_dir_all(nested_base);
     }
 
     #[test]
@@ -1649,6 +1738,21 @@ mod tests {
         validate_runtime_manifest(&root).expect("valid Runtime V1 pack");
         let layout = resolve_application_layout(root.clone(), true).expect("release layout");
         assert_eq!(layout.python, root.join("python/python.exe"));
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn release_manifest_verification_reports_file_progress() {
+        let root = temp_runtime_root("progress");
+        write_runtime_fixture(&root, "FigureSmith", env!("CARGO_PKG_VERSION"), 2);
+        let mut updates = Vec::new();
+        validate_runtime_manifest_with_progress(&root, |checked, total| {
+            updates.push((checked, total));
+        })
+        .expect("valid Runtime V1 pack");
+        let total = updates.last().map(|(_, total)| *total).expect("progress");
+        assert_eq!(updates.first().map(|(checked, _)| *checked), Some(0));
+        assert_eq!(updates.last().map(|(checked, _)| *checked), Some(total));
         let _ = std::fs::remove_dir_all(root);
     }
 

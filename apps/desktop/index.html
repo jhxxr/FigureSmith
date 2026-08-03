@@ -97,8 +97,8 @@
       <p class="eyebrow">Local startup</p>
       <h1>Preparing your workspace</h1>
       <p class="copy">Verifying the self-contained FigureSmith runtime before starting the local backend. Model weights remain external and can be imported in the app.</p>
-      <div id="status" class="status"><span class="loading"><span class="dot"></span>Verifying packaged runtime...</span></div>
-      <p class="footer">FigureSmith uses only the packaged Python and preinstalled dependencies. Startup fails closed if the companion runtime is missing or modified.</p>
+      <div id="status" class="status"><span class="loading"><span class="dot"></span>Locating the installed Runtime V1...</span></div>
+      <p class="footer">FigureSmith uses the Runtime V1 installed by Setup/MSI. Startup verifies it before the local backend is allowed to run; model weights remain external.</p>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>

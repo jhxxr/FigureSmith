@@ -70,15 +70,28 @@ function Assert-RuntimeV1([string]$Root) {
     if ($manifest.version -ne $Version) {
         throw "Runtime V1 version does not match desktop version $Version"
     }
+    if ($manifest.variant -ne "cpu") {
+        throw "Desktop installers require the CPU Runtime V1 variant"
+    }
 }
 Assert-RuntimeV1 $RuntimeRoot
-Write-Host "Using self-contained Runtime V1 companion pack: $RuntimeRoot" -ForegroundColor DarkGreen
+Write-Host "Using self-contained Runtime V1 resource: $RuntimeRoot" -ForegroundColor DarkGreen
 
-# NSIS/MSI build only the shell. The multi-gigabyte runtime is deliberately not
-# a Tauri resource; installed shells locate a separately delivered companion
-# `runtime` directory beside the executable. The Runtime V1 archive is published
-# separately from these installers. The empty `bundle.resources` list above is
-# what keeps it out of the installers.
+# Tauri resources are resolved relative to src-tauri. CI already stages the
+# CPU pack here; copy an explicitly supplied RuntimeRoot into the same source
+# for local/reproducible builds.
+$TauriRuntimeSource = Join-Path $Desktop "src-tauri\runtime"
+$runtimeRootFull = (Resolve-Path -LiteralPath $RuntimeRoot).Path.TrimEnd("\")
+$runtimeSourceFull = [IO.Path]::GetFullPath($TauriRuntimeSource).TrimEnd("\")
+if ($runtimeRootFull -ine $runtimeSourceFull) {
+    if (Test-Path -LiteralPath $TauriRuntimeSource) {
+        Remove-Item -LiteralPath $TauriRuntimeSource -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $TauriRuntimeSource -Force | Out-Null
+    Get-ChildItem -LiteralPath $RuntimeRoot -Force | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $TauriRuntimeSource $_.Name) -Recurse -Force
+    }
+}
 
 
 if (-not $SkipBuild) {
@@ -107,14 +120,15 @@ if (-not $SkipBuild) {
     Write-Host "SkipBuild: reusing existing Tauri target if present" -ForegroundColor Yellow
 }
 
-# The installed shell intentionally has no embedded runtime. It fails closed
-# until the separately delivered companion `runtime` directory is installed
-# beside FigureSmith.exe. The separately published Runtime V1 archive carries
-# the selected full variant.
 $TauriResources = Join-Path $TauriTarget "resources"
-if (Test-Path (Join-Path $TauriResources "runtime")) {
-    Remove-Item (Join-Path $TauriResources "runtime") -Recurse -Force
+$PackagedRuntime = Join-Path $TauriResources "runtime"
+if (-not (Test-Path (Join-Path $PackagedRuntime "runtime-manifest.json") -PathType Leaf)) {
+    throw "Tauri bundle is missing the embedded Runtime V1 resource: $PackagedRuntime"
 }
+if (-not (Test-Path (Join-Path $PackagedRuntime "python\python.exe") -PathType Leaf)) {
+    throw "Tauri bundle is missing the embedded Runtime V1 interpreter"
+}
+& (Join-Path $PSScriptRoot "ci\assert-no-weights.ps1") -Path $PackagedRuntime
 
 # Collect bundle artifacts
 $copied = @()

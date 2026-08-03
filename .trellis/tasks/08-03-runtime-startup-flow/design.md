@@ -117,8 +117,11 @@ the startup call graph auditable.
 ## Packaging and documentation
 
 - `scripts/build-desktop.ps1` will stage a supplied `RuntimeRoot` into the
-  configured Tauri resource source when necessary, verify that the staged
-  resource still exists after the build, and stop deleting it.
+  configured Tauri resource source when necessary and verify that source tree
+  before and after the build. It must not inspect Tauri's ephemeral
+  `target/release/resources` staging directory after bundling: Tauri may empty
+  or remove that implementation-detail directory after producing the MSI and
+  Setup bundles, even though the installers contain the configured resource.
 - Existing GitHub Actions CPU artifact download/staging remains in place and
   feeds the installer build. Contract checks will assert the resource config,
   staging path, manifest/interpreter checks, and installer-only release set.

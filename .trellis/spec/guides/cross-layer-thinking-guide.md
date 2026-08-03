@@ -121,6 +121,30 @@ After implementation:
 - [ ] Checked that derived state points back to the source event identifier
       (`seq`, `id`, `version`) instead of inventing a second cursor
 
+### Build Resource Staging vs. Final Artifact
+
+Packaging crosses a source-tree boundary and a bundler-output boundary. Keep
+these contracts separate:
+
+- Validate the staged source resource before invoking the bundler. This is the
+  directory named by the Tauri configuration and is the stable input contract.
+- Validate the final MSI/Setup files after the bundler returns. These are the
+  publishable outputs and must be checked for expected installer types and
+  weight exclusions.
+- Do not use `target/release/resources` as a post-build installer-content
+  assertion. Tauri may empty or remove that ephemeral staging directory after
+  producing valid bundles, so treating it as the final artifact creates a
+  false failure.
+
+```text
+staged runtime source ──validate──> Tauri bundler ──success──> MSI + Setup
+       stable input                         ephemeral internals     final outputs
+```
+
+The source-resource check and final-artifact check should each assert the
+boundary they own; neither should infer the other from an implementation
+detail of the bundler.
+
 ---
 
 ## Cross-Platform Template Consistency

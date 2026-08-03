@@ -201,8 +201,10 @@ into the immutable vendor tree.
 - Frontend checks assert preinstalled-runtime messaging and bilingual
   splash/welcome content, plus the `startup-status` phase/error contract.
 - PowerShell/CI checks assert the CPU runtime contains the embedded interpreter,
-  consumed locks, and no loose wheels/weights/caches; the Tauri bundle retains
-  the staged Runtime resource and publishes MSI/Setup only.
+  consumed locks, and no loose wheels/weights/caches; the Tauri source resource
+  is staged and validated before bundling, and MSI/Setup are the only published
+  desktop outputs. Tauri's post-build `target/release/resources` directory is
+  ephemeral and must not be used as the installer-content assertion.
 
 ### 7. Wrong vs Correct
 

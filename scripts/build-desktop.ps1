@@ -91,6 +91,9 @@ if ($runtimeRootFull -ine $runtimeSourceFull) {
     Get-ChildItem -LiteralPath $RuntimeRoot -Force | ForEach-Object {
         Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $TauriRuntimeSource $_.Name) -Recurse -Force
     }
+    # Verify the copied source tree too. Tauri consumes this directory as the
+    # bundle resource, so a copy failure must stop before an installer build.
+    Assert-RuntimeV1 $TauriRuntimeSource
 }
 
 
@@ -120,15 +123,17 @@ if (-not $SkipBuild) {
     Write-Host "SkipBuild: reusing existing Tauri target if present" -ForegroundColor Yellow
 }
 
-$TauriResources = Join-Path $TauriTarget "resources"
-$PackagedRuntime = Join-Path $TauriResources "runtime"
-if (-not (Test-Path (Join-Path $PackagedRuntime "runtime-manifest.json") -PathType Leaf)) {
-    throw "Tauri bundle is missing the embedded Runtime V1 resource: $PackagedRuntime"
+# Tauri consumes the source directory above while building the MSI and Setup
+# bundles. Its target/release/resources staging directory is an ephemeral
+# bundler implementation detail and is empty/removed after bundling; checking
+# it here would falsely reject installers that Tauri has already produced.
+if (-not (Test-Path (Join-Path $TauriRuntimeSource "runtime-manifest.json") -PathType Leaf)) {
+    throw "Tauri staged Runtime V1 resource is missing: $TauriRuntimeSource"
 }
-if (-not (Test-Path (Join-Path $PackagedRuntime "python\python.exe") -PathType Leaf)) {
-    throw "Tauri bundle is missing the embedded Runtime V1 interpreter"
+if (-not (Test-Path (Join-Path $TauriRuntimeSource "python\python.exe") -PathType Leaf)) {
+    throw "Tauri staged Runtime V1 interpreter is missing: $TauriRuntimeSource"
 }
-& (Join-Path $PSScriptRoot "ci\assert-no-weights.ps1") -Path $PackagedRuntime
+& (Join-Path $PSScriptRoot "ci\assert-no-weights.ps1") -Path $TauriRuntimeSource
 
 # Collect bundle artifacts
 $copied = @()

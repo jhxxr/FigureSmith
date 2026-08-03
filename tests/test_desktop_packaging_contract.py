@@ -41,10 +41,11 @@ def test_desktop_builder_keeps_and_checks_the_tauri_runtime_resource() -> None:
     script = (ROOT / "scripts" / "build-desktop.ps1").read_text(encoding="utf-8")
 
     assert "$TauriRuntimeSource" in script
-    assert "$PackagedRuntime" in script
-    assert "Tauri bundle is missing the embedded Runtime V1 resource" in script
+    assert "Tauri staged Runtime V1 resource is missing" in script
     assert "assert-no-weights.ps1" in script
-    assert "Remove-Item (Join-Path $TauriResources \"runtime\")" not in script
+    assert "$PackagedRuntime" not in script
+    assert "target\\release\\resources" not in script
+    assert "Assert-RuntimeV1 $TauriRuntimeSource" in script
 
 
 def test_desktop_builder_requires_runtime_v1_before_installer_build() -> None:

@@ -6,8 +6,9 @@
    - Set Tauri `bundle.resources` to `runtime`.
    - Replace stale shell-only comments and long-description text.
    - Make `build-desktop.ps1` preserve/stage the Runtime resource and assert
-     the built Tauri resource contains the manifest, embedded interpreter, and
-     no model-weight files.
+     the staged source tree contains the manifest, embedded interpreter, and
+     no model-weight files. Do not inspect Tauri's ephemeral
+     `target/release/resources` directory after bundling.
    - Keep only MSI/Setup plus the separately published CPU Runtime ZIP; do not
      add Portable output.
 

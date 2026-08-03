@@ -37,7 +37,6 @@ present and match the published ZIP.
 
 ## Desktop artifacts
 
-- [ ] Portable contains a real `FigureSmith.exe` and the verified CPU runtime.
 - [ ] Setup/MSI does not embed the companion runtime; installation is fail-closed
       until the verified `runtime` directory is placed beside the executable.
 - [ ] Model weights are imported by the user and are never uploaded.
@@ -46,7 +45,6 @@ present and match the published ZIP.
 ## GitHub Release contents
 
 - `FigureSmith-Setup-x64-*.exe` / `.msi`
-- `FigureSmith-Portable-x64-*.zip`
 - `FigureSmith-Runtime-Windows-CPU-*.zip`
 - `checksums.txt`
 - Release notes from `CHANGELOG.md`

@@ -47,9 +47,11 @@ def test_release_uploads_only_expected_cpu_packaged_artifacts() -> None:
         "dist-runtime/FigureSmith-Runtime-Windows-CPU-*/runtime-manifest.json",
         "dist-desktop/FigureSmith-*.exe",
         "dist-desktop/FigureSmith-*.msi",
-        "dist-desktop/FigureSmith-Portable-*.zip",
+        "dist-desktop/checksums.txt",
     ):
         assert pattern in workflow
+    assert "FigureSmith-Portable-*.zip" not in workflow
+    assert "README-PORTABLE.md" not in workflow
     assert workflow.count("if-no-files-found: error") >= 2
     assert "fail_on_unmatched_files: true" in workflow
 

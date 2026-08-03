@@ -15,7 +15,7 @@
 阶段六在桌面 UX 基础上提供 **Windows 打包工具**：
 
 - `./scripts/build-runtime.ps1`：包含内置 CPython 3.12、哈希锁定 CPU 依赖和原生 DLL 的 Windows Runtime V1；不包含模型权重
-- `./scripts/build-desktop.ps1`：生成 Setup/Portable 到 `dist-desktop/`
+- `./scripts/build-desktop.ps1`：生成 MSI/Setup 到 `dist-desktop/`
 - `./scripts/write-checksums.ps1`：生成 SHA-256 `checksums.txt`
 - 发布清单：[`docs/phase6-delivery.md`](./docs/phase6-delivery.md)、[`docs/release.md`](./docs/release.md)
 
@@ -40,7 +40,7 @@
 | `FIGURESMITH_SAM3_BPE` | 可选 BPE 词表路径 |
 | `FIGURESMITH_RMBG_MODEL_PATH` | 本地 RMBG-2.0 模型目录 |
 | `FIGURESMITH_DATA_DIR` | 显式应用数据根目录（模型/设置/上传/输出）；必须通过可写探针，否则启动以 `DATA_DIR_NOT_WRITABLE` 失败 |
-| `FIGURESMITH_DEV_MODE` | 仅源码开发时设为 `1` 才允许使用仓库 `data/`；发布/Portable 模式先尝试安装目录旁 `data/`，再回退到 LocalAppData |
+| `FIGURESMITH_DEV_MODE` | 仅源码开发时设为 `1` 才允许使用仓库 `data/`；发布模式先尝试安装目录旁 `data/`，再回退到 LocalAppData |
 | `FIGURESMITH_ALLOW_UNPINNED_MODELS` | 开发：允许与官方 pin 不匹配的导入 |
 | `FIGURESMITH_SESSION_TOKEN` | 桌面 Sidecar 会话令牌（由 Tauri 注入，勿提交） |
 | `FIGURESMITH_DISABLE_AUTH` | 测试旁路鉴权（`1` 关闭） |
@@ -134,7 +134,7 @@ python -c "import figuresmith; print(figuresmith.__version__)"
 | 1 | 仓库骨架、vendor 导入、品牌与合规、开发入口 |
 | 2 | 本地 SAM3/RMBG、模型包、离线路径 |
 | 3–5 | 加固、安全、模型管理与桌面 UX |
-| 6（当前） | Windows Runtime/Setup/Portable 打包工具与发布清单 |
+| 6（当前） | Windows Runtime/MSI/Setup 打包工具与发布清单 |
 
 ## 引用 / 上游
 

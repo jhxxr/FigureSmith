@@ -115,7 +115,7 @@ Plus `cargo check` in `apps/desktop/src-tauri` and `npm install` in `apps/deskto
 
 ## Explicit non-goals (still later)
 
-- Clean-machine Setup/Portable startup smoke and full Tauri artifact verification
+- Clean-machine Setup/MSI startup smoke and full Tauri artifact verification
 - Graceful job cancellation and broader model/runtime supply-chain hardening
 - macOS / Linux packaging commitments
 - Shipping model weights

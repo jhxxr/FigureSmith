@@ -12,7 +12,7 @@ V1 uses these tools to publish a self-contained CPU runtime:
 
 | Artifact intent | Script |
 |-----------------|--------|
-| Setup / portable desktop | `scripts/build-desktop.ps1` → `dist-desktop/` |
+| MSI / Setup desktop | `scripts/build-desktop.ps1` → `dist-desktop/` |
 | CPU Runtime V1 Pack | `scripts/build-runtime.ps1` → `dist-runtime/` |
 | SHA-256 list | `scripts/write-checksums.ps1` |
 | CI draft | `.github/workflows/release-windows.yml` |
@@ -57,7 +57,7 @@ python scripts/runtime/assemble_runtime.py --variant cpu --lock-root locks --cac
 ### dist-desktop/
 
 - `FigureSmith-Setup-x64-<ver>.exe` (when tauri bundle exists)
-- `FigureSmith-Portable-x64-<ver>.zip`
+- `FigureSmith-Setup-x64-<ver>.msi` (when tauri bundle exists)
 - `checksums.txt`
 
 ## Safety
@@ -73,8 +73,8 @@ python scripts/runtime/assemble_runtime.py --variant cpu --lock-root locks --cac
 - Model weights remain external and are imported through the Models page.
 - The pack and desktop build fail if model weights, caches, or loose wheels are present.
 - The cu128 lock and manual assembly path remain available but are not published by the release workflow.
-- `build-desktop.ps1` fails when the Tauri executable is missing; it never emits
-  a source-only Portable placeholder.
+- `build-desktop.ps1` fails unless both the NSIS and MSI installer artifacts are
+  present.
 - Code signing not configured (optional future hook)
 - GitHub Actions publishes only successful tag builds; manual dispatch is a packaging trial and never publishes
 

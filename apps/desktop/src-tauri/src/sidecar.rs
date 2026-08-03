@@ -176,7 +176,7 @@ impl SidecarState {
         }
 
         // Data dir: prefer explicit env; otherwise store next to the desktop
-        // executable (install/portable location) so large models are not forced
+        // executable (installed location) so large models are not forced
         // onto %LOCALAPPDATA% on C:.
         if let Ok(data_dir) = std::env::var("FIGURESMITH_DATA_DIR") {
             if !data_dir.trim().is_empty() {

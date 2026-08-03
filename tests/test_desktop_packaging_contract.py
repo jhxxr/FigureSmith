@@ -9,13 +9,13 @@ import json
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_desktop_builder_refuses_placeholder_portable_artifacts() -> None:
+def test_desktop_builder_publishes_installers_only() -> None:
     script = (ROOT / "scripts" / "build-desktop.ps1").read_text(encoding="utf-8")
 
-    assert "BUILD_INSTRUCTIONS.txt" not in script
-    assert "refusing to create a placeholder Portable artifact" in script
-    assert 'throw "No FigureSmith release executable found' in script
-    assert "Copy-Item $releaseExe" in script
+    assert "FigureSmith-Portable-x64-" not in script
+    assert "README-PORTABLE.md" not in script
+    assert "write-checksums.ps1" in script
+    assert 'throw "Expected both NSIS (.exe) and MSI (.msi) installer artifacts' in script
 
 
 def test_release_workflow_does_not_upload_placeholder_instructions() -> None:
@@ -24,7 +24,8 @@ def test_release_workflow_does_not_upload_placeholder_instructions() -> None:
     )
 
     assert "BUILD_INSTRUCTIONS.txt" not in workflow
-    assert "FigureSmith-Portable-*.zip" in workflow
+    assert "FigureSmith-Portable-*.zip" not in workflow
+    assert "README-PORTABLE.md" not in workflow
 
 
 def test_tauri_installer_does_not_embed_the_companion_runtime() -> None:
@@ -36,7 +37,7 @@ def test_tauri_installer_does_not_embed_the_companion_runtime() -> None:
     assert "runtime" not in config["bundle"]["resources"]
 
 
-def test_desktop_builder_requires_runtime_v1_and_portable_carries_it() -> None:
+def test_desktop_builder_requires_runtime_v1_before_installer_build() -> None:
     script = (ROOT / "scripts" / "build-desktop.ps1").read_text(encoding="utf-8")
 
     assert "Assert-RuntimeV1" in script
@@ -44,13 +45,8 @@ def test_desktop_builder_requires_runtime_v1_and_portable_carries_it() -> None:
     assert "verify_runtime_manifest" in script
     assert "python\\python.exe" in script
     assert "python312._pth" not in script
-    assert "robocopy.exe" in script
-    assert '"$portableZip.partial"' in script
-    assert "Move-Item -LiteralPath $portableZipStage" in script
-    assert "$portablePublished = $true" in script
     assert "Tauri resource" in script
-    assert "Keep the staged source directory intact" in script
-    assert 'Remove-Item $TauriSourceRuntime -Recurse -Force' not in script
+    assert "separately published Runtime V1 archive" in script
     assert "pip install" not in script
     assert "user-managed Python" not in script
 

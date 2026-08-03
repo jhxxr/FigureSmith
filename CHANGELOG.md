@@ -43,7 +43,7 @@ All notable changes to FigureSmith are documented in this file.
 
 - Add root `VERSION` and align package/desktop version to **0.6.0**.
 - Implement `scripts/build-runtime.ps1` Runtime Pack (app code + deps scripts, **no weights**).
-- Extend `scripts/build-desktop.ps1` to publish `dist-desktop/` Setup/Portable naming + checksums (`-SkipBuild` supported).
+- Extend `scripts/build-desktop.ps1` to publish `dist-desktop/` MSI/Setup naming + checksums (`-SkipBuild` supported).
 - Add `scripts/write-checksums.ps1` (SHA-256).
 - Add `figuresmith.runtime.packaging` weight-exclusion helpers + unit tests.
 - Add `docs/phase6-delivery.md`, `docs/release.md`, and draft `.github/workflows/release-windows.yml`.

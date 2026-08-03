@@ -54,7 +54,7 @@ See [CHANGELOG.md](./CHANGELOG.md) for details.
 
 ### Artifacts
 
-- Desktop Setup / Portable (Windows x64)
+- Desktop MSI / Setup installers (Windows x64)
 - Runtime Pack (Windows NVIDIA) — **no model weights**
 
 ### Notes

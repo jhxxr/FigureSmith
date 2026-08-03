@@ -262,9 +262,7 @@ jobs:
           path: |
             dist-desktop/FigureSmith-*.exe
             dist-desktop/FigureSmith-*.msi
-            dist-desktop/FigureSmith-Portable-*.zip
             dist-desktop/checksums.txt
-            dist-desktop/**/README-PORTABLE.md
           if-no-files-found: error
           retention-days: 14
 

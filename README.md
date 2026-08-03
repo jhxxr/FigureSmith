@@ -11,7 +11,7 @@ Local-first scientific figure generation, segmentation, vectorization, and SVG e
 Runtime V1 adds a **self-contained CPU Windows runtime** on top of the desktop UX:
 
 - `./scripts/build-runtime.ps1` — hash-locked CPU Runtime V1 pack (embedded CPython, packages, native DLLs; no model weights)
-- `./scripts/build-desktop.ps1` — Setup/Portable outputs under `dist-desktop/`
+- `./scripts/build-desktop.ps1` — MSI/Setup outputs under `dist-desktop/`
 - `./scripts/write-checksums.ps1` — SHA-256 `checksums.txt`
 - Release docs: [docs/phase6-delivery.md](./docs/phase6-delivery.md), [docs/release.md](./docs/release.md)
 
@@ -32,7 +32,7 @@ prepared and imported by the user.
 | `FIGURESMITH_SAM3_BPE` | Optional BPE vocab path |
 | `FIGURESMITH_RMBG_MODEL_PATH` | Path to local RMBG-2.0 model directory |
 | `FIGURESMITH_DATA_DIR` | Explicit app data root (models/settings/uploads/outputs). It must pass a writable create/flush/replace/delete probe; otherwise startup fails with `DATA_DIR_NOT_WRITABLE`. |
-| `FIGURESMITH_DEV_MODE` | Set to `1` only for source development to allow repository `data/`; release/portable mode uses adjacent `data/` then LocalAppData fallback. |
+| `FIGURESMITH_DEV_MODE` | Set to `1` only for source development to allow repository `data/`; release mode uses adjacent `data/` then LocalAppData fallback. |
 | `FIGURESMITH_ALLOW_UNPINNED_MODELS` | Dev: allow imports that do not match official pins |
 | `FIGURESMITH_SESSION_TOKEN` | Desktop sidecar Bearer token (set by Tauri; do not commit) |
 | `FIGURESMITH_DISABLE_AUTH` | Test/dev bypass for auth middleware (`1` = off) |

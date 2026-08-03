@@ -2,7 +2,6 @@
 #
 # Outputs (under dist-desktop/):
 #   FigureSmith-Setup-x64-<ver>.*     (from Tauri bundle when present)
-#   FigureSmith-Portable-x64-<ver>.zip
 #   checksums.txt
 #
 # Never packages model weights.
@@ -77,9 +76,9 @@ Write-Host "Using self-contained Runtime V1 companion pack: $RuntimeRoot" -Foreg
 
 # NSIS/MSI build only the shell. The multi-gigabyte runtime is deliberately not
 # a Tauri resource; installed shells locate a separately delivered companion
-# `runtime` directory beside the executable. Portable assembly below carries it.
-# Keep the staged source directory intact until Portable assembly has copied it.
-# The empty `bundle.resources` list above is what keeps it out of the installers.
+# `runtime` directory beside the executable. The Runtime V1 archive is published
+# separately from these installers. The empty `bundle.resources` list above is
+# what keeps it out of the installers.
 
 
 if (-not $SkipBuild) {
@@ -110,7 +109,8 @@ if (-not $SkipBuild) {
 
 # The installed shell intentionally has no embedded runtime. It fails closed
 # until the separately delivered companion `runtime` directory is installed
-# beside FigureSmith.exe. Portable assembly carries the selected full variant.
+# beside FigureSmith.exe. The separately published Runtime V1 archive carries
+# the selected full variant.
 $TauriResources = Join-Path $TauriTarget "resources"
 if (Test-Path (Join-Path $TauriResources "runtime")) {
     Remove-Item (Join-Path $TauriResources "runtime") -Recurse -Force
@@ -139,101 +139,20 @@ if (Test-Path $BundleDir) {
         }
     }
 } else {
-    Write-Warning "No Tauri bundle dir at $BundleDir — portable pack will still be assembled from sources/scripts."
+    Write-Warning "No Tauri bundle dir at $BundleDir — installer artifacts will be missing."
 }
 
-# Portable zip must contain the actual Tauri executable. A source/script-only
-# directory is not a publishable desktop artifact.
-$portableName = "FigureSmith-Portable-x64-$Version"
-$portableDir = Join-Path $distDesktop $portableName
-# Remove an old display directory through a short name before touching the deep
-# runtime tree. New builds publish only the ZIP, never this expanded directory.
-if (Test-Path $portableDir) {
-    $oldPortableTrash = Join-Path $distDesktop ".trash-old-$PID"
-    if (Test-Path $oldPortableTrash) { Remove-Item -LiteralPath $oldPortableTrash -Recurse -Force }
-    Move-Item -LiteralPath $portableDir -Destination $oldPortableTrash
-    Remove-Item -LiteralPath $oldPortableTrash -Recurse -Force
-}
-# Prefer release exe if present
-$releaseExe = Join-Path $TauriTarget "FigureSmith.exe"
-if (-not (Test-Path $releaseExe)) {
-    $cand = Get-ChildItem -Path $TauriTarget -Filter "*.exe" -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -match "^(FigureSmith|figuresmith-desktop)\.exe$" } |
-        Select-Object -First 1
-    if ($cand) { $releaseExe = $cand.FullName }
-}
-if (-not (Test-Path $releaseExe -PathType Leaf)) {
-    $portableZip = Join-Path $distDesktop "$portableName.zip"
-    if (Test-Path $portableDir) { Remove-Item -Recurse -Force $portableDir }
-    if (Test-Path $portableZip) { Remove-Item -Force $portableZip }
-    throw "No FigureSmith release executable found under $TauriTarget; refusing to create a placeholder Portable artifact."
+# Remove stale artifacts from older builds so this command never leaves or
+# checksums a Portable package after the release channel was simplified to
+# installers plus the separately published Runtime V1 archive.
+Get-ChildItem -LiteralPath $distDesktop -Force -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -like "FigureSmith-Portable-*" -or $_.Name -like "README-PORTABLE*" } |
+    ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force }
+
+$installerExtensions = @($copied | ForEach-Object { [IO.Path]::GetExtension($_).ToLowerInvariant() })
+if (".exe" -notin $installerExtensions -or ".msi" -notin $installerExtensions) {
+    throw "Expected both NSIS (.exe) and MSI (.msi) installer artifacts under $BundleDir"
 }
 
-$portableStage = Join-Path $distDesktop ".portable-stage-$PID"
-$portableZip = Join-Path $distDesktop "$portableName.zip"
-$portableZipStage = "$portableZip.partial"
-$portablePublished = $false
-
-foreach ($path in @($portableStage, $portableZipStage)) {
-    if (Test-Path $path) { Remove-Item -LiteralPath $path -Recurse -Force }
-}
-if (Test-Path $portableZip) { Remove-Item -LiteralPath $portableZip -Force }
-
-try {
-    New-Item -ItemType Directory -Path $portableStage | Out-Null
-
-    foreach ($f in @("LICENSE", "NOTICE.md", "THIRD_PARTY_NOTICES.md", "README.md", "README_ZH.md", "VERSION", "CHANGELOG.md")) {
-        $src = Join-Path $RepoRoot $f
-        if (Test-Path $src) { Copy-Item $src (Join-Path $portableStage $f) -Force }
-    }
-
-    Copy-Item $releaseExe (Join-Path $portableStage "FigureSmith.exe") -Force
-    Write-Host "Included FigureSmith.exe in portable pack"
-
-    # Keep the 4.5 GiB Torch tree under a short staging root for every recursive
-    # operation. robocopy handles long Windows paths more reliably than
-    # Copy-Item -Recurse; its success exit codes are 0 through 7.
-    $portableRuntime = Join-Path $portableStage "runtime"
-    New-Item -ItemType Directory -Path $portableRuntime | Out-Null
-    & robocopy.exe $RuntimeRoot $portableRuntime /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 /XJ /NFL /NDL /NJH /NJS /NP
-    if ($LASTEXITCODE -gt 7) {
-        throw "Runtime V1 copy failed with robocopy exit code $LASTEXITCODE"
-    }
-    Assert-RuntimeV1 $portableRuntime
-
-    @"
-# FigureSmith Portable
-
-- Product: FigureSmith / 图匠
-- Version: $Version
-- This Portable archive includes a self-contained Runtime V1 pack. FigureSmith uses only `runtime\python\python.exe`; no system Python, pip, venv creation, or network installation is used.
-- Python packages are preinstalled and verified before launch. Model weights remain external and are imported through the app.
-- Import SAM3/RMBG model weights in the app.
-- Backend must bind 127.0.0.1 only (desktop sidecar enforces this).
-
-See docs in the full repository: docs/phase6-delivery.md, docs/release.md
-"@ | Set-Content (Join-Path $portableStage "README-PORTABLE.md") -Encoding utf8
-
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-    [System.IO.Compression.ZipFile]::CreateFromDirectory($portableStage, $portableZipStage)
-    Move-Item -LiteralPath $portableZipStage -Destination $portableZip
-    Write-Host "Portable zip: $portableZip" -ForegroundColor Green
-
-    & (Join-Path $PSScriptRoot "write-checksums.ps1") -Path $distDesktop -OutFile (Join-Path $distDesktop "checksums.txt")
-    $portablePublished = $true
-} finally {
-    if (Test-Path $portableStage) {
-        # Rename to an even shorter path before recursive deletion so cleanup
-        # does not strand deep Torch license paths.
-        $trash = Join-Path $distDesktop ".trash-$PID"
-        if (Test-Path $trash) { Remove-Item -LiteralPath $trash -Recurse -Force }
-        Move-Item -LiteralPath $portableStage -Destination $trash
-        Remove-Item -LiteralPath $trash -Recurse -Force
-    }
-    if (Test-Path $portableZipStage) { Remove-Item -LiteralPath $portableZipStage -Force }
-    if (-not $portablePublished -and (Test-Path $portableZip)) {
-        Remove-Item -LiteralPath $portableZip -Force
-    }
-}
-
+& (Join-Path $PSScriptRoot "write-checksums.ps1") -Path $distDesktop -OutFile (Join-Path $distDesktop "checksums.txt")
 Write-Host "Desktop packaging done -> $distDesktop" -ForegroundColor Green

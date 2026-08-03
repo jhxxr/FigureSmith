@@ -90,7 +90,7 @@ def get_app_data_dir(*, development: Optional[bool] = None) -> Path:
     Resolution order (first writable wins):
 
     1. ``FIGURESMITH_DATA_DIR`` — explicit user/admin override
-    2. ``FIGURESMITH_INSTALL_ROOT/data`` — installer/portable root
+    2. ``FIGURESMITH_INSTALL_ROOT/data`` — installer root
     3. ``<repo_root>/data`` — only when explicit development mode is enabled
     4. ``%LOCALAPPDATA%\\FigureSmith`` (or macOS/Linux equivalent) — last resort
        when the install directory is not writable (e.g. Program Files)

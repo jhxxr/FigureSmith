@@ -195,3 +195,25 @@ Fixed the desktop packaging lifecycle, removed Portable packaging per user reque
 ### Status
 
 [OK] **Completed**
+
+
+## Session 10: Finish packaged CPU Runtime startup flow
+
+**Date**: 2026-08-03
+**Task**: Finish packaged CPU Runtime startup flow
+**Branch**: `master`
+
+### Summary
+
+Validated GitHub Actions run 30826609271: tests, CPU Runtime packaging, MSI/NSIS desktop packaging, no-model-weight checks, and artifact uploads all succeeded. Archived 08-03-runtime-startup-flow. No Portable package is produced; CPU Runtime is embedded in installers and the ZIP remains an optional repair asset.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6084d19` | (see git log) |
+| `c42039c` | (see git log) |
+
+### Status
+
+[OK] **Completed**

@@ -109,14 +109,17 @@ The resolved containment check prevents sibling-prefix escapes, and the
 canonical root prevents uploads from silently returning a path that points back
 into the immutable vendor tree.
 
-## Scenario: User-managed Python and model environment boundary
+## Scenario: Packaged Python and model environment boundary
 
 ### 1. Scope / Trigger
 
 - Trigger: the Windows application pack, Tauri sidecar resolver, backend
   startup probe, model diagnostics, and welcome/splash UI cross the packaging,
   Rust, Python, and frontend boundaries.
-- Owner: `apps/desktop/src-tauri/src/sidecar.rs` scans supported base Python installations and creates the isolated environment; `apps/backend/figuresmith/api/system_routes.py` reports package/GPU state; `scripts/build-runtime.ps1` publishes application files and guidance only.
+- Owner: `apps/desktop/src-tauri/src/sidecar.rs` verifies and launches the
+  companion Runtime V1 tree; `apps/backend/figuresmith/api/system_routes.py`
+  reports package/GPU state; `scripts/build-runtime.ps1` assembles the
+  hash-locked CPU or cu128 tree from maintainer-side inputs.
 
 ### 2. Signatures
 
@@ -130,55 +133,60 @@ into the immutable vendor tree.
 
 ### 3. Contracts
 
-- Release resources contain application source, `requirements-runtime.txt`,
-  `requirements-bootstrap.txt`, `requirements-models.txt`, dependency metadata,
-  and a hash manifest. They never contain Python executables, wheels, model
+- Release resources contain an embedded CPython 3.12 tree, resolved
+  `Lib/site-packages`, native DLLs, application source, the consumed locks, and
+  a schema-2 `runtime-manifest.json`. They never contain loose wheels, model
   weights, caches, or user data.
-- Python candidates are scanned from `FIGURESMITH_PYTHON`, project environments, the Windows launcher, PATH, conda/virtualenv locations, and known user installation roots. A supported Python 3.10-3.12 is used only as the base for `%LOCALAPPDATA%\FigureSmith\python-env`; the sidecar runs from that isolated environment.
+- `python312._pth` restricts the packaged interpreter to the shipped zip,
+  interpreter directory, and `Lib/site-packages`; the sidecar also removes
+  `PYTHONPATH`/`PYTHONHOME` and passes `-B` before `main.py`.
 - Release mode resolves only through Tauri Resource paths. It never falls back
-  to PATH/repository files for application code. A missing, extra, tampered,
-  wrong-version, or embedded-runtime file fails before sidecar spawn.
-- Missing bootstrap packages are installed into the isolated environment during
-  first launch. They never modify the selected base Python. Missing model
-  packages do not block the editor; status separates them from bootstrap
-  packages and offers the model requirements command.
+  to PATH, repository files, or system Python. A missing, extra, tampered,
+  wrong-version, or incomplete runtime file fails before sidecar spawn.
+- Release startup performs no venv creation, pip install, dependency resolve,
+  or network access. Missing optional model packages do not block the editor;
+  status separates them from bootstrap packages while model weights remain
+  user-imported data.
+- Development mode may still use an explicit external `FIGURESMITH_PYTHON`.
+  `FIGURESMITH_MANAGED_PYTHON_DIR` is a legacy diagnostic field and does not
+  influence release runtime resolution.
 - The backend GPU probe must not import Torch in the main process. Native import
   aborts, nonzero exits, timeouts, and Python exceptions become `probe_error`.
-- `FIGURESMITH_RUNTIME_ROOT` identifies the packaged guidance root for status
-  commands; `FIGURESMITH_PYTHON` is the explicit base-Python override and
-  `FIGURESMITH_MANAGED_PYTHON_DIR` overrides the isolated environment location.
+- `FIGURESMITH_RUNTIME_ROOT` identifies the runtime root for status diagnostics;
+  it is not a dependency acquisition channel.
 
 ### 4. Validation & Error Matrix
 
 | Condition | Result |
 |---|---|
-| Release resource directory missing | startup fails before sidecar spawn; no repo fallback |
-| Python version outside 3.10-3.12 | candidate rejected and diagnostic retained |
-| Bootstrap package missing | first launch installs it into the isolated environment; the base Python is unchanged |
-| Only Torch/SAM3/model import missing | editor starts; `/api/system/status` reports `missing_models` |
+| Release resource directory missing | startup fails before sidecar spawn; no repo/PATH fallback |
+| Build interpreter is not CPython 3.12 | assembly fails before creating a publishable tree |
+| Only optional model package/import is missing | editor starts; `/api/system/status` reports `missing_models` |
 | Torch native import aborts or times out | backend remains alive; GPU is unavailable with redacted `probe_error` |
 | Runtime manifest version/hash/inventory mismatch | local splash receives bounded startup error |
-| Python/wheel/weight/cache appears in application pack | build or manifest verification fails closed |
+| Python/wheel/weight/cache appears outside the allowed Runtime V1 layout | build or manifest verification fails closed |
 
 ### 5. Good/Base/Bad Cases
 
-- Good: `py -3.12` lacks SAM3 but has FastAPI; the editor opens and the
-  welcome page gives `requirements-models.txt`.
-- Base: an explicit venv is selected when it has bootstrap packages even if a
-  newer PATH Python appears first.
-- Bad: Python 3.13 with an incompatible Torch, a stale repository `PYTHONPATH`,
-  or a resource pack containing `python.exe`; startup rejects it.
+- Good: a verified CPU companion beside `FigureSmith.exe` starts with no system
+  Python and reports missing optional model imports without blocking the editor.
+- Base: a developer launch uses an explicit external Python while release mode
+  still requires the embedded interpreter from the verified companion.
+- Bad: a stale repository `PYTHONPATH`, a missing/tampered manifest entry, or a
+  release pack without `python/python.exe`; startup rejects it.
 
 ### 6. Tests Required
 
-- Rust tests assert missing resource, application-only identity/version,
-  tamper/hash/extra-file rejection, and no embedded Python acceptance.
-- Python tests assert manifest application-only fields, dependency scope
-  payloads, system status commands, and subprocess-isolated GPU failure paths.
-- Frontend checks assert one status load, separated model/bootstrap messaging,
-  copyable install action, and bilingual splash/welcome content.
-- PowerShell/CI checks assert the application pack contains all three guidance
-  files and no Python/wheel/weight artifacts.
+- Rust tests assert missing resource, schema-2 identity/version, embedded
+  interpreter selection, tamper/hash/extra-file rejection, and the `-B` spawn
+  contract.
+- Python tests assert schema-2 manifest fields, dependency scope payloads,
+  builder-version rejection, system status commands, and subprocess-isolated
+  GPU failure paths.
+- Frontend checks assert preinstalled-runtime messaging and bilingual
+  splash/welcome content.
+- PowerShell/CI checks assert the CPU runtime contains the embedded interpreter,
+  consumed locks, and no loose wheels/weights/caches.
 
 ### 7. Wrong vs Correct
 

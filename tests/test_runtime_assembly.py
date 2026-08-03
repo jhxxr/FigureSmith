@@ -6,7 +6,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -130,6 +130,7 @@ def test_assembly_copies_and_hashes_all_consumed_locks(
             (root, wheelhouse_root, variant)
         ),
     )
+    monkeypatch.setattr(assembly_script, "_assert_builder_python", lambda path: None)
     archive = tmp_path / "python.zip"
     archive.write_bytes(b"archive")
     monkeypatch.setattr(assembly_script, "_cached_source", lambda *args: archive)
@@ -193,6 +194,21 @@ def test_assembly_copies_and_hashes_all_consumed_locks(
         "wheelhouse": hashlib.sha256(b"lock-2").hexdigest(),
     }
     assert {path.name for path in (out / "locks").iterdir()} >= set(names)
+
+
+def test_assembly_requires_cpython_312_builder(
+    monkeypatch: pytest.MonkeyPatch, assembly_script: ModuleType
+) -> None:
+    monkeypatch.setattr(
+        assembly_script.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0, stdout="CPython\n3.11\n", stderr=""
+        ),
+    )
+
+    with pytest.raises(assembly_script.AssemblyError, match="requires CPython 3.12"):
+        assembly_script._assert_builder_python(Path("python.exe"))
 
 
 def test_offline_source_cache_refuses_missing_and_tampered_archives(

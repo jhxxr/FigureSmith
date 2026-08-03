@@ -8,22 +8,20 @@ Local-first scientific figure generation, segmentation, vectorization, and SVG e
 
 ## Status (Phase 6)
 
-Phase 6 adds **Windows packaging tooling** on top of the Phase 5 desktop UX:
+Runtime V1 adds a **self-contained CPU Windows runtime** on top of the desktop UX:
 
-- `./scripts/build-runtime.ps1` — application-only Windows Runtime Pack (no Python, CUDA, dependency wheels, or model weights)
+- `./scripts/build-runtime.ps1` — hash-locked CPU Runtime V1 pack (embedded CPython, packages, native DLLs; no model weights)
 - `./scripts/build-desktop.ps1` — Setup/Portable outputs under `dist-desktop/`
 - `./scripts/write-checksums.ps1` — SHA-256 `checksums.txt`
 - Release docs: [docs/phase6-delivery.md](./docs/phase6-delivery.md), [docs/release.md](./docs/release.md)
 
-The desktop shell scans available Python 3.10-3.12 installations, uses one only as a base, and creates a dedicated FigureSmith environment under the user's LocalAppData. Bootstrap packages are installed only into that isolated environment; PyTorch, CUDA, SAM3, and model weights are never installed automatically.
+The published Windows release carries embedded CPython 3.12 and a reproducible, hash-locked CPU dependency set. It does not require system Python, pip, venv creation, or network access on first launch. The `cu128` lock remains available for maintainer/manual builds, but CUDA is not included in the published release asset.
 
 Also includes welcome/models UX, local-only SAM UI, Tauri sidecar on **127.0.0.1**, and session token auth.
 
-**Not shipped in git/releases:** Python runtimes, dependency wheels, model weights
-(`sam3.pt`, RMBG safetensors, etc.). The first desktop launch creates a per-user
-isolated environment and installs `requirements-bootstrap.txt` there. Use the
-reported isolated-Python command with `requirements-models.txt` only when local
-inference is needed.
+**Not shipped in git/releases:** model weights (`sam3.pt`, RMBG safetensors, etc.)
+or user data. The CPU runtime is shipped as a release archive; models are still
+prepared and imported by the user.
 
 ### Local model environment variables
 
@@ -38,8 +36,7 @@ inference is needed.
 | `FIGURESMITH_ALLOW_UNPINNED_MODELS` | Dev: allow imports that do not match official pins |
 | `FIGURESMITH_SESSION_TOKEN` | Desktop sidecar Bearer token (set by Tauri; do not commit) |
 | `FIGURESMITH_DISABLE_AUTH` | Test/dev bypass for auth middleware (`1` = off) |
-| `FIGURESMITH_PYTHON` | Optional explicit base Python executable; the desktop creates its isolated environment from it without modifying it |
-| `FIGURESMITH_MANAGED_PYTHON_DIR` | Optional override for the isolated environment directory; default is `%LOCALAPPDATA%\FigureSmith\python-env` |
+| `FIGURESMITH_PYTHON` | Development-only external Python override; ignored by release Runtime V1 |
 See [docs/development.md](./docs/development.md).
 
 ## Relationship to AutoFigure-Edit

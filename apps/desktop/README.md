@@ -18,7 +18,7 @@ The Tauri process:
 | **Rust** | `rustup` + `cargo` (MSVC toolchain on Windows; development/build only) |
 | **Node.js** | 20+ with `npm` (development/build only) |
 | **WebView2** | Preinstalled on modern Windows 11; bootstrapper used if missing |
-| **Runtime V1** | Installed shells require a verified companion `runtime` directory beside `FigureSmith.exe`; Portable carries the complete selected CPU/cu128 runtime |
+| **Runtime V1** | Releases provide a verified CPU companion `runtime` directory beside `FigureSmith.exe`; Portable carries the complete CPU runtime |
 
 Optional env:
 
@@ -53,11 +53,12 @@ npm run tauri -- dev
 ```
 
 Release Setup artifacts contain the desktop shell and fail closed until a verified
-schema-2 Runtime V1 companion is installed beside `FigureSmith.exe`. Portable
+schema-2 CPU Runtime V1 companion is installed beside `FigureSmith.exe`. Portable
 artifacts carry that complete runtime: embedded CPython 3.12, hash-locked
 site-packages, and native DLLs. No target-machine pip, venv creation, system
 Python, or online dependency installation is used. Model weights remain external
-and are imported through the Models page.
+and are imported through the Models page. The cu128 lock is retained for manual
+maintainer builds, but is not part of the published release.
 
 ## Tauri commands
 
@@ -84,8 +85,8 @@ Placeholder solid-color icons under `src-tauri/icons/` (not the upstream AutoFig
 
 ## Troubleshooting
 
-- **Sidecar startup failure**: use the splash action to create/repair the isolated environment. It uses a supported base Python but does not install into that base.
-- **Model environment incomplete**: the editor can still open; install the reported Torch/torchvision/SAM3 packages into the isolated environment before running local inference.
-- **Sidecar health timeout**: ensure a supported base Python is installed and the bootstrap requirements can be reached by the isolated environment setup.
+- **Sidecar startup failure**: confirm that the verified CPU `runtime` companion is beside `FigureSmith.exe`; release mode never falls back to system Python.
+- **Model environment incomplete**: the editor can still open; import the required model weights through the Models page.
+- **Sidecar health timeout**: verify the Runtime V1 manifest and checksum before retrying.
 - **Auth 401 in browser-only mode**: browser dev should use `./scripts/run-backend.ps1` without a session token, or set `FIGURESMITH_DISABLE_AUTH=1` (tests only).
 - **Orphan Python after crash**: startup and exit paths own a cleanup guard and use `taskkill /T` as a final fallback.

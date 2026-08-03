@@ -2,55 +2,55 @@
 
 ## Before tagging
 
-- [ ] Run `./scripts/ci/sync-version.ps1 -Version X.Y.Z` to align `VERSION`, Python, npm, Cargo, and Tauri metadata
-- [ ] Update `CHANGELOG.md`
-- [ ] `PYTHONPATH=apps/backend;vendor/autofigure_edit python -m pytest tests -q`
-- [ ] Confirm no weights staged: `git status` clean of `*.pt` / `*.safetensors`
-- [ ] README still states independence from ResearAI and weight license disclaimer
+- [ ] Run `./scripts/ci/sync-version.ps1 -Version X.Y.Z` to align `VERSION`,
+      Python, npm, Cargo, and Tauri metadata.
+- [ ] Update `CHANGELOG.md`.
+- [ ] Run `PYTHONPATH=apps/backend;vendor/autofigure_edit python -m pytest tests -q`.
+- [ ] Confirm no model weights are staged.
 
-## Build locally
+## Runtime build
+
+The release workflow validates both lock bundles but publishes only the CPU
+Runtime V1 pack:
+
+The build machine must use x64 CPython 3.12 and install the archive helper:
 
 ```powershell
-./scripts/build-runtime.ps1
-./scripts/build-desktop.ps1   # or -SkipBuild if binary already built
+python -m pip install zstandard
 ```
 
-## Verify artifacts
+```powershell
+python scripts/runtime/fetch_wheelhouse.py --variant cpu --lock-root locks --out build/wheelhouse-cpu
+python scripts/runtime/assemble_runtime.py --variant cpu --lock-root locks --cache build/source-cache --fetch-sources
+./scripts/validate-runtime-locks.ps1 -LockRoot locks -Variant cpu -Wheelhouse build/wheelhouse-cpu
+./scripts/build-runtime.ps1 -Variant cpu -Wheelhouse build/wheelhouse-cpu
+```
 
-- [ ] `dist-runtime/**/MANIFEST.json` and `runtime-manifest.json` have
-  `"contains_weights": false` and `"contains_cache": false` in the structured
-  runtime manifest; product/version match `FigureSmith` and `VERSION`
-- [ ] No `*.pt` / `*.safetensors` under `dist-runtime` or `dist-desktop`
-- [ ] `checksums.txt` present and hashes match
-- [ ] Runtime manifest declares `application_only: true`, `python_required: external`, and no weights/cache/dependency artifacts
-- [ ] The application pack contains `requirements-runtime.txt`, `requirements-bootstrap.txt`, `requirements-models.txt`, and the dependency contract; it does not contain `python.exe`, Python DLLs, wheels, PyTorch, CUDA, SAM3 source, model weights, or user data
-- [ ] Release notes tell users to provide Python 3.10-3.12 as a base; FigureSmith creates `%LOCALAPPDATA%\FigureSmith\python-env` and installs bootstrap packages there without changing the base environment
-- [ ] Desktop resolver scans multiple Python installations, creates/repairs the isolated environment, reports missing model packages, and continues to the UI when only model packages are missing
-- [ ] The target machine has a supported NVIDIA driver, WebView2, and Visual C++
-  runtime; these OS prerequisites are not bundled by FigureSmith
-- [ ] Portable archive contains a real `FigureSmith.exe`; missing binaries fail
-  the build and never produce a placeholder archive
-- [ ] Portable/README states models must be imported by the user
-- [ ] Product name is **FigureSmith** (not AutoFigure-Edit)
+Verify that `runtime-manifest.json` has schema `2`, `variant: "cpu"`,
+`runtime_complete: true`, `contains_weights: false`, and
+`contains_cache: false`. Run the independent manifest verifier and
+`./scripts/ci/assert-no-weights.ps1 -Path dist-runtime`.
 
-## GitHub Release contents (allowed)
+The pack must contain embedded `python/python.exe`, the CPU lock files, and no
+loose `.whl`, model weight, cache, or user-data files. `checksums.txt` must be
+present and match the published ZIP.
+
+## Desktop artifacts
+
+- [ ] Portable contains a real `FigureSmith.exe` and the verified CPU runtime.
+- [ ] Setup/MSI does not embed the companion runtime; installation is fail-closed
+      until the verified `runtime` directory is placed beside the executable.
+- [ ] Model weights are imported by the user and are never uploaded.
+- [ ] WebView2 and the Visual C++ runtime remain documented OS prerequisites.
+
+## GitHub Release contents
 
 - `FigureSmith-Setup-x64-*.exe` / `.msi`
 - `FigureSmith-Portable-x64-*.zip`
-- `FigureSmith-Runtime-Windows-*.zip` (application code + dependency guidance only)
+- `FigureSmith-Runtime-Windows-CPU-*.zip`
 - `checksums.txt`
-- Release notes (from CHANGELOG)
+- Release notes from `CHANGELOG.md`
 
-## Never upload
-
-- `sam3.pt`, RMBG weights, HF caches, user `outputs/`, API keys, session tokens
-
-## Optional signing
-
-If a certificate is available:
-
-```text
-signtool sign /fd SHA256 /a path\to\FigureSmith-Setup-x64-*.exe
-```
-
-Skip silently when no cert is configured.
+The `cu128` lock and assembly path are retained for manual/maintainer builds,
+but no CUDA runtime archive is uploaded by this workflow. Model weights,
+caches, user outputs, API keys, and session tokens must never be uploaded.

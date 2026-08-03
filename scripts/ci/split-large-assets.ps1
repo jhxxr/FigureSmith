@@ -39,9 +39,12 @@ foreach ($file in $files) {
             if (Test-Path $partPath) { Remove-Item $partPath -Force }
             $partStream = [System.IO.File]::Open($partPath, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
             try {
-                $partRemaining = [Math]::Min($MaxBytes, $remaining)
+                # Cast both operands explicitly. Mixing int and long here makes
+                # the [Math]::Min overload ambiguous, which fails only once an
+                # asset is large enough to exercise the long path.
+                $partRemaining = [long][Math]::Min([long]$MaxBytes, [long]$remaining)
                 while ($partRemaining -gt 0) {
-                    $requested = [int][Math]::Min($buffer.Length, $partRemaining)
+                    $requested = [int][Math]::Min([long]$buffer.Length, [long]$partRemaining)
                     $read = $inputStream.Read($buffer, 0, $requested)
                     if ($read -le 0) { throw "Unexpected EOF while splitting $($file.Name)" }
                     $partStream.Write($buffer, 0, $read)

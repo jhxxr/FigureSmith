@@ -4,6 +4,14 @@ All notable changes to FigureSmith are documented in this file.
 
 ## [0.6.3] — 2026-08-01
 
+### Self-contained CPU Runtime V1
+
+- Replace the application-only Windows pack with an embedded CPython 3.12
+  runtime and hash-locked CPU dependencies assembled offline.
+- Publish the CPU runtime as the Windows release artifact; retain the cu128
+  lock and manual assembly path without uploading the multi-gigabyte CUDA pack.
+- Keep SAM3/RMBG model weights external so users prepare and import them locally.
+
 ### Windows packaging fix
 
 - Fix GitHub Actions staging of the application Runtime Pack into Tauri resources so the desktop package receives the manifest and dependency guidance at the expected root.

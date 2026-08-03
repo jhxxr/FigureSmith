@@ -7,22 +7,34 @@
 
 ## Packaging baseline
 
-Ship **packaging scripts and release documentation** for Windows x86_64:
+Ship **packaging scripts and release documentation** for Windows x86_64. Runtime
+V1 uses these tools to publish a self-contained CPU runtime:
 
 | Artifact intent | Script |
 |-----------------|--------|
 | Setup / portable desktop | `scripts/build-desktop.ps1` → `dist-desktop/` |
-| Runtime Pack (no weights) | `scripts/build-runtime.ps1` → `dist-runtime/` |
+| CPU Runtime V1 Pack | `scripts/build-runtime.ps1` → `dist-runtime/` |
 | SHA-256 list | `scripts/write-checksums.ps1` |
 | CI draft | `.github/workflows/release-windows.yml` |
 
-**Model weights are never packaged.** `MANIFEST.json` sets `contains_weights: false`. Copy filters exclude `*.pt` / `*.safetensors` / etc.
+**Model weights are never packaged.** `runtime-manifest.json` sets
+`contains_weights: false`. Copy filters exclude `*.pt` / `*.safetensors` / etc.
 
 ## Commands
 
+The build machine needs x64 CPython 3.12 and the archive helper:
+
 ```powershell
-# Runtime pack (safe, no huge CUDA download required for skeleton)
-./scripts/build-runtime.ps1
+python -m pip install zstandard
+```
+
+This tooling prerequisite is not shipped to or required on the target machine.
+
+```powershell
+# Acquire and assemble the CPU Runtime V1 pack
+python scripts/runtime/fetch_wheelhouse.py --variant cpu --lock-root locks --out build/wheelhouse-cpu
+python scripts/runtime/assemble_runtime.py --variant cpu --lock-root locks --cache build/source-cache --fetch-sources
+./scripts/build-runtime.ps1 -Variant cpu -Wheelhouse build/wheelhouse-cpu
 
 # Desktop: full tauri build (needs Rust/Node) or repackage only
 ./scripts/build-desktop.ps1
@@ -34,12 +46,12 @@ Ship **packaging scripts and release documentation** for Windows x86_64:
 
 ## Layout
 
-- `FigureSmith-Runtime-Windows-<version>/`
+- `FigureSmith-Runtime-Windows-CPU-<version>/`
+  - embedded `python/` with CPython 3.12 and resolved CPU site-packages
   - `app/backend`, `app/vendor/*`, `app/resources` (filtered application source)
-  - `requirements-runtime.txt`, `requirements-bootstrap.txt`, `requirements-models.txt`
-  - `app/backend/figuresmith/runtime/dependencies.json`
-  - `README-RUNTIME.md`, `MANIFEST.json`, `runtime-manifest.json`, licenses
-  - no Python interpreter, dependency wheels, CUDA runtime, SAM3 source, model weights, caches, or user data
+  - `locks/` with the exact consumed CPU inputs and generated requirements
+  - `runtime-manifest.json` and licenses
+  - no loose wheels, SAM3/RMBG model weights, caches, or user data
 - Optional `.zip` + `checksums.txt`
 
 ### dist-desktop/
@@ -57,10 +69,10 @@ Ship **packaging scripts and release documentation** for Windows x86_64:
 ## Known limitations
 
 - Full NSIS/MSVC installer binary requires a successful `tauri build` on the builder machine
-- The Runtime Pack deliberately does not vendor Python or the ML stack. On first launch the desktop selects a supported user-installed Python 3.10-3.12 only as a base, creates `%LOCALAPPDATA%\FigureSmith\python-env`, and installs bootstrap packages into that isolated environment. The base Python remains unchanged.
-- `requirements-runtime.txt` is the combined user-environment guidance; model packages remain optional and are installed into the isolated environment only when local inference is needed.
-- The welcome page exposes the isolated environment path, missing model packages, copyable commands, and visual model import/verification progress.
-- The pack and desktop build fail if model weights, caches, wheels, Python executables, or dependency DLLs are present.
+- The published Runtime Pack vendors CPython and the CPU runtime stack. On first launch it does not create a venv, invoke pip, or require system Python.
+- Model weights remain external and are imported through the Models page.
+- The pack and desktop build fail if model weights, caches, or loose wheels are present.
+- The cu128 lock and manual assembly path remain available but are not published by the release workflow.
 - `build-desktop.ps1` fails when the Tauri executable is missing; it never emits
   a source-only Portable placeholder.
 - Code signing not configured (optional future hook)

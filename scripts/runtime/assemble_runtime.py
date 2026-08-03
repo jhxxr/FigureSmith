@@ -289,6 +289,39 @@ def _install_packages(
         )
 
 
+def _assert_builder_python(builder_python: Path) -> None:
+    """Require the build interpreter to match the locked CPython minor version."""
+    probe = (
+        "import platform, sys; "
+        "print(platform.python_implementation()); "
+        "print(f'{sys.version_info.major}.{sys.version_info.minor}')"
+    )
+    try:
+        result = subprocess.run(
+            [str(builder_python), "-c", probe],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        raise AssemblyError(
+            f"cannot execute the Runtime V1 builder Python: {builder_python}"
+        ) from exc
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()
+        raise AssemblyError(
+            f"Runtime V1 builder Python failed its version probe: {builder_python}"
+            + (f" ({detail[-500:]})" if detail else "")
+        )
+    identity = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if identity[:2] != ["CPython", "3.12"]:
+        actual = " ".join(identity[:2]) if identity else "unknown"
+        raise AssemblyError(
+            "Runtime V1 assembly requires CPython 3.12 on the build machine; "
+            f"got {actual} from {builder_python}"
+        )
+
+
 def _strip_non_runtime_install_artifacts(pack: Path) -> tuple[int, int]:
     """Remove pip-generated files whose bytes are deliberately non-deterministic.
 
@@ -352,6 +385,7 @@ def assemble(
         validate_lock_bundle(lock_root, wheelhouse_root=wheelhouse, variant=variant)
     except RuntimeLockError as exc:
         raise AssemblyError(f"wheelhouse does not match the committed locks: {exc}") from exc
+    _assert_builder_python(builder_python)
 
     if out.exists():
         shutil.rmtree(out)

@@ -1,4 +1,4 @@
-"""Application-only runtime manifest contracts."""
+"""Self-contained Runtime V1 manifest contracts."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Static checks for the Windows application-pack release workflow."""
+"""Static checks for the Windows Runtime V1 release workflow."""
 
 from __future__ import annotations
 
@@ -38,14 +38,13 @@ def test_release_is_gated_to_successful_packaging_and_has_write_permission() -> 
     assert "softprops/action-gh-release@v2" in workflow
 
 
-def test_release_uploads_only_expected_packaged_artifacts() -> None:
+def test_release_uploads_only_expected_cpu_packaged_artifacts() -> None:
     workflow = _workflow()
 
     for pattern in (
-        "dist-runtime/*.zip",
+        "dist-runtime/FigureSmith-Runtime-Windows-CPU-*.zip",
         "dist-runtime/checksums.txt",
-        "dist-runtime/**/MANIFEST.json",
-        "dist-runtime/**/runtime-manifest.json",
+        "dist-runtime/FigureSmith-Runtime-Windows-CPU-*/runtime-manifest.json",
         "dist-desktop/FigureSmith-*.exe",
         "dist-desktop/FigureSmith-*.msi",
         "dist-desktop/FigureSmith-Portable-*.zip",
@@ -68,47 +67,59 @@ def test_release_reasserts_no_weight_files_before_upload() -> None:
         assert pattern in workflow
 
 
-def test_windows_release_validates_application_only_runtime_manifest() -> None:
+def test_windows_release_validates_cpu_runtime_v1_manifest() -> None:
     workflow = _workflow()
 
-    assert "Validate application-only runtime manifest and artifacts" in workflow
+    assert "Validate CPU Runtime V1 manifest and artifacts" in workflow
     assert '$manifest.product -ne "FigureSmith"' in workflow
     assert "$manifest.version -ne $expectedVersion" in workflow
+    assert "$manifest.schema -ne 2" in workflow
+    assert '$manifest.variant -ne "cpu"' in workflow
+    assert "$manifest.runtime_complete -ne $true" in workflow
     assert "$manifest.contains_weights -ne $false" in workflow
     assert "$manifest.contains_cache -ne $false" in workflow
-    assert "$manifest.application_only -ne $true" in workflow
-    assert '$manifest.python_required -ne "external"' in workflow
-    assert "$manifest.runtime_complete -ne $false" in workflow
-    assert '"requirements-runtime.txt"' in workflow
-    assert '"requirements-bootstrap.txt"' in workflow
-    assert '"requirements-models.txt"' in workflow
+    assert '"python/python.exe"' in workflow
+    assert '"locks/requirements-win-py312-cpu.lock.json"' in workflow
+    assert '"locks/sources-cpu.lock.json"' in workflow
+    assert '"locks/wheelhouse-cpu.manifest.json"' in workflow
     assert '"app/backend/figuresmith/runtime/dependencies.json"' in workflow
-    assert "must not contain Python or dependency artifacts" in workflow
+    assert "must not contain loose dependency wheels" in workflow
+    assert "Independent Runtime V1 manifest verification failed" in workflow
 
 
-def test_runtime_release_requires_application_pack_artifacts() -> None:
+def test_runtime_release_acquires_only_cpu_inputs_and_skips_split_assets() -> None:
+    workflow = _workflow()
+
+    assert "Validate committed CPU and CUDA lock bundles" in workflow
+    assert "fetch_wheelhouse.py --variant cpu" in workflow
+    assert "assemble_runtime.py --variant cpu" in workflow
+    assert "build-runtime.ps1 -Variant cpu" in workflow
+    assert "split-large-assets.ps1" not in workflow
+    assert "figuresmith-runtime-cpu" in workflow
+    assert "figuresmith-runtime\n" not in workflow
+
+
+def test_runtime_release_requires_cpu_pack_artifacts() -> None:
     workflow = _workflow()
 
     for pattern in (
-        '"MANIFEST.json"',
         '"runtime-manifest.json"',
-        '"README-RUNTIME.md"',
-        '"requirements-runtime.txt"',
+        '"python/python.exe"',
         '"$packName.zip"',
         '"checksums.txt"',
-        "Expected exactly one application runtime directory",
+        "Expected exactly one CPU runtime directory",
     ):
         assert pattern in workflow
 
 
-def test_release_notes_describe_external_models_and_python() -> None:
+def test_release_notes_describe_cpu_runtime_and_external_models() -> None:
     workflow = _workflow()
 
     assert "Models are external" in workflow
     assert "download and import them on the target machine" in workflow
-    assert "User-managed Python environment" in workflow
-    assert "Python 3.10-3.12" in workflow
-    assert "does not install them" in workflow
+    assert "Self-contained CPU Runtime V1" in workflow
+    assert "publishes the CPU runtime only" in workflow
+    assert "not uploaded as a release asset" in workflow
 
 
 def test_desktop_job_stages_application_pack_before_tauri_build() -> None:
@@ -118,8 +129,9 @@ def test_desktop_job_stages_application_pack_before_tauri_build() -> None:
     assert "actions/download-artifact@v4" in workflow
     assert "Stage application pack for Tauri resources" in workflow
     assert "apps/desktop/src-tauri/runtime" in workflow
-    assert "$manifest.application_only -ne $true" in workflow
-    assert "$manifest.python_required -ne \"external\"" in workflow
+    assert '$manifest.schema -ne 2' in workflow
+    assert '$manifest.variant -ne "cpu"' in workflow
+    assert "$manifest.runtime_complete -ne $true" in workflow
 
 
 def test_release_notes_use_version_from_the_same_shell_step() -> None:

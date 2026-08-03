@@ -72,7 +72,7 @@ jobs:
     name: package-runtime
     needs: test
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -82,32 +82,59 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Build application Runtime Pack
+      - name: Install runtime assembly tooling
         shell: pwsh
-        run: ./scripts/build-runtime.ps1
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install zstandard
 
-      - name: Validate application-only runtime manifest and artifacts
+      - name: Validate committed CPU and CUDA lock bundles
+        shell: pwsh
+        run: |
+          ./scripts/validate-runtime-locks.ps1 -LockRoot locks -Variant cpu
+          ./scripts/validate-runtime-locks.ps1 -LockRoot locks -Variant cu128
+
+      - name: Acquire pinned CPU wheelhouse
+        shell: pwsh
+        run: python scripts/runtime/fetch_wheelhouse.py --variant cpu --lock-root locks --out build/wheelhouse-cpu
+
+      - name: Acquire pinned CPU source archives
+        shell: pwsh
+        run: python scripts/runtime/assemble_runtime.py --variant cpu --lock-root locks --cache build/source-cache --fetch-sources
+
+      - name: Validate acquired CPU wheelhouse
+        shell: pwsh
+        run: ./scripts/validate-runtime-locks.ps1 -LockRoot locks -Variant cpu -Wheelhouse build/wheelhouse-cpu
+
+      - name: Build CPU Runtime V1 pack
+        shell: pwsh
+        run: ./scripts/build-runtime.ps1 -Variant cpu -Wheelhouse build/wheelhouse-cpu
+
+      - name: Validate CPU Runtime V1 manifest and artifacts
         shell: pwsh
         run: |
           $expectedVersion = (Get-Content VERSION -Raw).Trim()
-          $packName = "FigureSmith-Runtime-Windows-$expectedVersion"
+          $packName = "FigureSmith-Runtime-Windows-CPU-$expectedVersion"
           $runtimeRoot = Join-Path "dist-runtime" $packName
 
           $runtimeDirs = @(Get-ChildItem -Path dist-runtime -Directory)
           if ($runtimeDirs.Count -ne 1 -or $runtimeDirs[0].Name -ne $packName) {
             $names = ($runtimeDirs | ForEach-Object Name) -join ", "
-            throw "Expected exactly one application runtime directory '$packName', found: $names"
+            throw "Expected exactly one CPU runtime directory '$packName', found: $names"
           }
-          if (-not (Test-Path (Join-Path "dist-runtime" "$packName.zip") -PathType Leaf)) { throw "Application runtime zip is missing" }
+          if (-not (Test-Path (Join-Path "dist-runtime" "$packName.zip") -PathType Leaf)) { throw "CPU runtime zip is missing" }
           if (-not (Test-Path (Join-Path "dist-runtime" "checksums.txt") -PathType Leaf)) { throw "Runtime checksums are missing" }
           foreach ($relative in @(
-            "MANIFEST.json",
             "runtime-manifest.json",
-            "README-RUNTIME.md",
-            "requirements-runtime.txt",
-            "requirements-bootstrap.txt",
-            "requirements-models.txt",
-            "app/backend/figuresmith/runtime/dependencies.json"
+            "python/python.exe",
+            "python/python312._pth",
+            "app/backend/main.py",
+            "app/vendor/autofigure_edit/server.py",
+            "app/backend/figuresmith/runtime/dependencies.json",
+            "locks/requirements-win-py312-cpu.lock.json",
+            "locks/sources-cpu.lock.json",
+            "locks/wheelhouse-cpu.manifest.json",
+            "locks/requirements-cpu.txt"
           )) {
             if (-not (Test-Path (Join-Path $runtimeRoot $relative) -PathType Leaf)) {
               throw "Missing application runtime file: $relative"
@@ -116,12 +143,21 @@ jobs:
           $manifest = Get-Content (Join-Path $runtimeRoot "runtime-manifest.json") -Raw | ConvertFrom-Json
           if ($manifest.product -ne "FigureSmith") { throw "Runtime manifest product is not FigureSmith" }
           if ($manifest.version -ne $expectedVersion) { throw "Runtime manifest version mismatch" }
-          if ($manifest.application_only -ne $true) { throw "Runtime manifest is not application-only" }
-          if ($manifest.python_required -ne "external") { throw "Runtime manifest does not declare external Python" }
-          if ($manifest.runtime_complete -ne $false) { throw "Runtime manifest claims embedded Python" }
+          if ($manifest.schema -ne 2) { throw "Runtime manifest schema is not 2" }
+          if ($manifest.variant -ne "cpu") { throw "Release runtime must be the CPU variant" }
+          if ($manifest.runtime_complete -ne $true) { throw "Runtime manifest does not declare a complete runtime" }
           if ($manifest.contains_weights -ne $false -or $manifest.contains_cache -ne $false) { throw "Runtime manifest safety flags are invalid" }
-          if (Get-ChildItem -Path $runtimeRoot -Recurse -File -Include "python.exe","python*.dll","*.whl" | Select-Object -First 1) {
-            throw "Application runtime pack must not contain Python or dependency artifacts"
+          if (Get-ChildItem -Path $runtimeRoot -Recurse -File -Filter "*.whl" | Select-Object -First 1) {
+            throw "Runtime pack must not contain loose dependency wheels"
+          }
+          $oldPythonPath = $env:PYTHONPATH
+          try {
+            $env:PYTHONPATH = Join-Path $PWD "apps/backend"
+            python -B -m figuresmith.runtime.manifest (Join-Path $runtimeRoot "runtime-manifest.json") $runtimeRoot
+            if ($LASTEXITCODE -ne 0) { throw "Independent Runtime V1 manifest verification failed" }
+          } finally {
+            if ($null -eq $oldPythonPath) { Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue }
+            else { $env:PYTHONPATH = $oldPythonPath }
           }
 
       - name: Assert no model weights
@@ -131,13 +167,11 @@ jobs:
       - name: Upload runtime artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: figuresmith-runtime
+          name: figuresmith-runtime-cpu
           path: |
-            dist-runtime/*.zip
+            dist-runtime/FigureSmith-Runtime-Windows-CPU-*.zip
             dist-runtime/checksums.txt
-            dist-runtime/**/MANIFEST.json
-            dist-runtime/**/runtime-manifest.json
-            dist-runtime/**/README-RUNTIME.md
+            dist-runtime/FigureSmith-Runtime-Windows-CPU-*/runtime-manifest.json
           if-no-files-found: error
           retention-days: 14
 
@@ -174,7 +208,7 @@ jobs:
       - name: Download application runtime pack
         uses: actions/download-artifact@v4
         with:
-          name: figuresmith-runtime
+          name: figuresmith-runtime-cpu
           path: downloaded-runtime
 
       - name: Stage application pack for Tauri resources
@@ -200,9 +234,9 @@ jobs:
           $manifestPath = Join-Path $target "runtime-manifest.json"
           if (-not (Test-Path $manifestPath -PathType Leaf)) { throw "Staged application pack is missing runtime-manifest.json" }
           $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
-          if ($manifest.application_only -ne $true -or $manifest.python_required -ne "external") { throw "Downloaded runtime is not an application-only pack" }
-          if (-not (Test-Path (Join-Path $target "requirements-bootstrap.txt") -PathType Leaf)) { throw "Bootstrap dependency guidance is missing" }
-          if (-not (Test-Path (Join-Path $target "requirements-models.txt") -PathType Leaf)) { throw "Model dependency guidance is missing" }
+          if ($manifest.schema -ne 2 -or $manifest.variant -ne "cpu" -or $manifest.runtime_complete -ne $true) { throw "Downloaded runtime is not a complete CPU Runtime V1 pack" }
+          if (-not (Test-Path (Join-Path $target "python/python.exe") -PathType Leaf)) { throw "Embedded CPU Python is missing" }
+          if (-not (Test-Path (Join-Path $target "locks/requirements-win-py312-cpu.lock.json") -PathType Leaf)) { throw "CPU requirements lock is missing" }
 
       - name: Install desktop npm deps
         working-directory: apps/desktop
@@ -255,7 +289,7 @@ jobs:
       - name: Download runtime artifacts
         uses: actions/download-artifact@v4
         with:
-          name: figuresmith-runtime
+          name: figuresmith-runtime-cpu
           path: release-assets/runtime
 
       - name: Download desktop artifacts
@@ -293,10 +327,9 @@ jobs:
               "---\n\n"
               "**Models are external.** SAM3 / RMBG checkpoints are not included; "
               "download and import them on the target machine after installation.\n"
-              "**User-managed Python environment (isolated):** the Runtime Pack and desktop installer include application code and dependency guidance, not Python itself. "
-              "The target machine must provide Python 3.10-3.12 as a base; FigureSmith creates `%LOCALAPPDATA%\\FigureSmith\\python-env` and installs bootstrap packages there without modifying the base. "
-              "Torch/torchvision/CUDA/SAM3 remain optional model dependencies; the app does not install them automatically. "
-              "A supported NVIDIA driver, WebView2, and Visual C++ runtime are still required.\n"
+              "**Self-contained CPU Runtime V1:** the Windows runtime archive includes embedded CPython 3.12, hash-locked CPU packages, and native runtime DLLs. No system Python, venv creation, pip, or online dependency installation is needed on the target machine. "
+              "This release publishes the CPU runtime only; the cu128 lock remains available for maintainer/manual builds but is not uploaded as a release asset. "
+              "A supported WebView2 and Visual C++ runtime are still required.\n"
               "Source license ≠ third-party model weight licenses.\n"
           )
           Path("release-notes.md").write_text(notes, encoding="utf-8")

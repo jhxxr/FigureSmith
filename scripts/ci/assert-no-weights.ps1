@@ -20,17 +20,25 @@ $weightExt = @(
 
 $bad = New-Object System.Collections.Generic.List[string]
 
-function Test-WeightName([string]$name) {
+function Test-WeightName([string]$name, [string]$relativePath = "") {
     $n = $name.ToLowerInvariant()
+    $relative = $relativePath.Replace("\", "/").TrimStart("/").ToLowerInvariant()
     $ext = [System.IO.Path]::GetExtension($n)
+    # Runtime V1 legitimately carries import hooks and CUDA payloads with
+    # these suffixes inside site-packages. Real checkpoints remain forbidden,
+    # including when they happen to be installed under site-packages.
+    $inSitePackages = $relative -match "(^|/)python/lib/site-packages/"
+    if ($inSitePackages -and $ext -in @(".pth", ".bin")) { return $false }
     if ($weightExt -contains $ext) { return $true }
     if ($n -eq "model.safetensors" -or $n -like "model-*.safetensors") { return $true }
     return $false
 }
 
 # 1) Plain files under Path
+$rootPath = (Resolve-Path $Path).Path
 Get-ChildItem -Path $Path -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
-    if (Test-WeightName $_.Name) {
+    $relative = $_.FullName.Substring($rootPath.Length).TrimStart("\", "/")
+    if (Test-WeightName $_.Name $relative) {
         $bad.Add($_.FullName) | Out-Null
     }
 }
@@ -44,7 +52,7 @@ Get-ChildItem -Path $Path -Recurse -File -Filter "*.zip" -ErrorAction SilentlyCo
             foreach ($entry in $zip.Entries) {
                 $entryName = $entry.FullName
                 $base = [System.IO.Path]::GetFileName($entryName)
-                if (Test-WeightName $base) {
+                if (Test-WeightName $base $entryName) {
                     $bad.Add(("$($_.FullName) :: $entryName")) | Out-Null
                 }
             }

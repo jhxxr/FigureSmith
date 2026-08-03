@@ -1,34 +1,53 @@
-# Windows application-pack dependencies
+# Runtime V1 locks
 
-FigureSmith no longer attempts to ship CPython, PyTorch, CUDA wheels, or a
-fully resolved ML runtime. Those files are too hardware- and driver-specific
-for a reliable desktop artifact.
+Runtime V1 is assembled from exact, committed Windows Python 3.12 locks. The
+published GitHub Release contains the CPU pack only; the cu128 lock remains
+available for maintainer or manual GPU builds and is validated in CI.
 
-The Windows application pack contains:
+The lock bundle for each variant contains:
 
-- `requirements-runtime.txt`, a reviewable set of user-environment package
-  ranges;
-- `app/backend/figuresmith/runtime/dependencies.json`, which maps distribution
-  names to import names and separates bootstrap, model, generation, and SVG
-  scopes;
-- `runtime-manifest.json`, a hash inventory of application files only.
+- `requirements-win-py312-<variant>.lock.json` — exact wheel versions, URLs,
+  tags, licenses, and SHA-256 digests;
+- `sources-<variant>.lock.json` — the CPython embeddable archive and pinned
+  native cairo DLL sources;
+- `wheelhouse-<variant>.manifest.json` — the acquired wheel inventory.
 
-At startup the desktop shell scans visible Python 3.10-3.12 candidates and uses
-one only as a base. It creates `%LOCALAPPDATA%\FigureSmith\python-env` and
-installs bootstrap packages into that isolated environment. The base Python and
-other environments are never modified. Torch/torchvision/SAM3 and GPU support
-are checked separately by the backend in an isolated child process, so a broken
-native Torch installation cannot crash the editor. The welcome page shows the
-managed path, missing packages, and a copyable command for the isolated Python.
-
-For local inference, install model packages into the isolated environment after
-first launch, choosing the CUDA-compatible Torch pair for the target machine:
+The build machine must provide x64 CPython 3.12 with pip and the `zstandard`
+package (for unpacking pinned MSYS2 archives):
 
 ```powershell
-# Use the exact python.exe path shown by the welcome page.
-<isolated-python> -m pip install -r requirements-models.txt
+python -m pip install zstandard
 ```
 
-Model weights remain external and are imported through the Models page. The
-application pack never contains Python executables, wheels, caches, user data,
-or model weights.
+The assembler rejects another Python minor version before it creates a pack.
+This is a maintainer/build-machine requirement only; the published CPU pack
+still contains its own interpreter and does not require Python or pip on the
+target machine.
+
+Acquisition is network-enabled and always verifies the committed digests:
+
+```powershell
+python scripts/runtime/fetch_wheelhouse.py `
+  --variant cpu --lock-root locks --out build/wheelhouse-cpu
+python scripts/runtime/assemble_runtime.py `
+  --variant cpu --lock-root locks --cache build/source-cache --fetch-sources
+./scripts/validate-runtime-locks.ps1 `
+  -LockRoot locks -Variant cpu -Wheelhouse build/wheelhouse-cpu
+```
+
+Assembly is offline. It installs with `--no-index`, `--require-hashes`,
+`--no-deps`, and `--only-binary :all:` into the embedded interpreter's
+`Lib/site-packages`. Missing or tampered inputs fail before publication.
+
+```powershell
+./scripts/build-runtime.ps1 -Variant cpu -Wheelhouse build/wheelhouse-cpu
+```
+
+The resulting CPU pack contains embedded CPython, resolved packages, native
+DLLs, the consumed locks, and a schema-2 `runtime-manifest.json`. It contains
+no model weights, caches, loose wheels, or mutable user data. The manifest
+records every file and its SHA-256 digest; the desktop sidecar verifies it
+before spawning the backend.
+
+The CPU pack is approximately 0.23 GiB compressed. The cu128 pack is much
+larger and is intentionally not uploaded as a release asset.

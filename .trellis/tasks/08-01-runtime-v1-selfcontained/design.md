@@ -3,7 +3,7 @@
 ## Shipped layout
 
 ```
-FigureSmith-Runtime-Windows-{cpu|cu128}-<version>/
+FigureSmith-Runtime-Windows-CPU-<version>/  # published artifact
   python/
     python.exe, python312.dll, python312.zip
     python312._pth              # isolation policy
@@ -137,14 +137,16 @@ staging paths stays fatal regardless. `is_weight_file` gains an explicit
 
 `cu128` uncompressed is expected in the 4-6 GB range, dominated by torch plus
 the `nvidia-*` CUDA runtime wheels; GitHub's per-asset ceiling is 2 GB.
-`split-large-assets.ps1` already writes 1.9 GB parts, a part manifest, and a
-joiner that verifies each part digest and the reconstructed whole. Wiring it in
-is a workflow change, not new code.
+The measured compressed size is 2.68 GiB, so it is intentionally excluded from
+the selected release channel. GitHub Releases publish the CPU pack only; its
+0.23 GiB compressed archive fits as one asset. `split-large-assets.ps1` remains
+available but unwired.
 
-Desktop installer: `bundle.resources = ["runtime"]` cannot carry the cu128 tree.
-The installer ships the application shell and resolves a runtime pack installed
-beside it; the Portable zip carries a full variant. This keeps one payload
-definition and avoids a 6 GB MSI.
+Desktop installer: `bundle.resources = ["runtime"]` does not carry the runtime
+tree. The installer ships the application shell and resolves a verified CPU
+runtime pack installed beside it; the Portable zip carries the same CPU
+variant. The cu128 assembly path remains a maintainer/manual path until a
+separate GPU delivery design is approved.
 
 ## Measurement gate
 

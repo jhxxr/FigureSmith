@@ -46,16 +46,42 @@ jobs:
           python -m pytest tests -q
 
   runtime-pack-smoke:
-    name: application-runtime-pack-smoke
+    name: cpu-runtime-pack-smoke
     needs: test
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build application runtime pack
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runtime assembly tooling
         shell: pwsh
-        run: ./scripts/build-runtime.ps1 -SkipZip
+        run: python -m pip install --upgrade pip zstandard
+
+      - name: Validate committed CPU and CUDA lock bundles
+        shell: pwsh
+        run: |
+          ./scripts/validate-runtime-locks.ps1 -LockRoot locks -Variant cpu
+          ./scripts/validate-runtime-locks.ps1 -LockRoot locks -Variant cu128
+
+      - name: Acquire pinned CPU wheelhouse
+        shell: pwsh
+        run: python scripts/runtime/fetch_wheelhouse.py --variant cpu --lock-root locks --out build/wheelhouse-cpu
+
+      - name: Acquire pinned CPU source archives
+        shell: pwsh
+        run: python scripts/runtime/assemble_runtime.py --variant cpu --lock-root locks --cache build/source-cache --fetch-sources
+
+      - name: Validate acquired CPU wheelhouse
+        shell: pwsh
+        run: ./scripts/validate-runtime-locks.ps1 -LockRoot locks -Variant cpu -Wheelhouse build/wheelhouse-cpu
+
+      - name: Build CPU Runtime V1 pack
+        shell: pwsh
+        run: ./scripts/build-runtime.ps1 -Variant cpu -Wheelhouse build/wheelhouse-cpu -SkipZip
 
       - name: Assert no weights
         shell: pwsh

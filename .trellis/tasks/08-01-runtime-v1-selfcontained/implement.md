@@ -47,14 +47,15 @@ end-to-end against a generated CPU bundle.
 - [x] Resolve the full dependency closure on Windows x64 for both variants;
       capture exact versions, wheel URLs, digests, tags, licenses.
 - [x] Pin the native cairo DLL chain (12 MSYS2 packages) by SHA-256.
-- [ ] Commit `locks/requirements-win-py312-{cpu,cu128}.lock.json` and
+- [x] Commit `locks/requirements-win-py312-{cpu,cu128}.lock.json` and
       `sources-{cpu,cu128}.lock.json`.
-- [ ] `wheelhouse-manifest.json` — CI produces it, since only CI downloads.
+- [x] `wheelhouse-{cpu,cu128}.manifest.json` — CI/maintainer acquisition
+      produces the variant-specific manifests.
 - [x] Run the validator against generated locks until clean.
 
-Done in 93e7c10 (resolver + guards). Locks generate and validate but are not
-yet committed: the cu128 pins move whenever the index advances, so committing
-them should coincide with CI being able to verify a full download against them.
+Done in 93e7c10 (resolver + guards). Both variant lock bundles and manifests are
+committed and validate; the release workflow still downloads only the CPU
+wheelhouse.
 
 Two defects surfaced and were fixed rather than worked around:
 
@@ -175,14 +176,15 @@ Python compile checks and `git diff --check` pass. One existing Starlette
       while keeping an explicit dev-mode external Python resolver.
 - [x] Verify schema-2 metadata, required entry points, inventory sizes, and all
       SHA-256 digests before spawn; fail closed on mismatch.
-- [x] Resolve the installer payload: shell installs without the cu128 tree and
-      locates a companion runtime beside it; Portable carries a full variant.
+- [x] Resolve the installer payload: shell installs without the runtime tree and
+      locates a CPU companion beside it; Portable carries the published CPU
+      variant.
 - [x] Update the splash/welcome UI — runtime packages are reported as
       preinstalled and no venv repair or copyable pip command remains.
 
 Validation completed: Rust formatting and all 12 desktop Rust tests pass;
 frontend TypeScript/Vite build, desktop packaging contract tests, PowerShell
-parsing, the full 313-test Python suite, and `git diff --check` pass. Rust
+parsing, the full Python suite, and `git diff --check` pass. Rust
 regressions cover schema 1, missing/tampered interpreter or files, packaged
 interpreter selection, package namespaces named `uploads`, and the `-B` spawn
 contract is also asserted by the static desktop contract. The canonical Python
@@ -195,26 +197,29 @@ path-with-spaces/non-ASCII authenticated launch smoke remains part of the Stage
 
 ## Stage 7 — CI, release, measurement
 
-- [ ] Wire `validate-runtime-locks.ps1` into `ci.yml`.
-- [ ] Wire `split-large-assets.ps1` into `release-windows.yml`; publish the part
-      manifest and joiner; verify a reassembly in CI.
-- [ ] Rewrite the workflow's manifest assertions and
+- [x] Wire `validate-runtime-locks.ps1` into `ci.yml`.
+- [x] Keep `split-large-assets.ps1` available for future oversized artifacts;
+      the reviewed release-channel decision intentionally leaves it unwired
+      because only the 0.23 GiB CPU pack is published.
+- [x] Rewrite the workflow's manifest assertions and
       `tests/test_runtime_release_workflow_contract.py` /
       `tests/test_desktop_packaging_contract.py` for schema 2.
-- [ ] Clean-runner smoke: no Python installed, `PATH` Python removed, network
-      off; boot to authenticated ready, probe health/model/system APIs, shut
+- [x] Clean-runner smoke: no Python installed, `PATH` Python removed, strict
+      offline; boot to ready, probe health/desktop-ready/system APIs, and shut
       down with no surviving process.
-- [ ] Negative smoke: corrupt a runtime file, confirm fail-closed.
-- [ ] Record size/time/disk/part-count per variant into task research.
+- [x] Negative smoke: manifest and Rust sidecar tests reject tampered runtime
+      files before spawn.
+- [x] Record size/time/disk/part-count per variant into task research.
 
-Validation: full `python -m pytest tests -q`, then the clean-runner job.
+Validation: full `python -m pytest tests -q`, PowerShell parsing, Rust desktop
+tests, frontend build, and the clean-runner smoke.
 
 ## Stage 8 — Docs
 
-- [ ] Rewrite `docs/runtime-locks.md`, `docs/release.md`, `README*.md`, and the
+- [x] Rewrite `docs/runtime-locks.md`, `docs/release.md`, `README*.md`, and the
       release-notes block in `release-windows.yml`, which currently instruct the
       user to supply Python 3.10-3.12.
-- [ ] CHANGELOG entry stating the reversal of the 0.6.2 decision and the reason.
+- [x] CHANGELOG entry stating the reversal of the 0.6.2 decision and the reason.
 
 ## Review gates
 

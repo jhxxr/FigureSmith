@@ -78,8 +78,8 @@ Write-Host "Using self-contained Runtime V1 companion pack: $RuntimeRoot" -Foreg
 # NSIS/MSI build only the shell. The multi-gigabyte runtime is deliberately not
 # a Tauri resource; installed shells locate a separately delivered companion
 # `runtime` directory beside the executable. Portable assembly below carries it.
-$TauriSourceRuntime = Join-Path $Desktop "src-tauri\runtime"
-if (Test-Path $TauriSourceRuntime) { Remove-Item $TauriSourceRuntime -Recurse -Force }
+# Keep the staged source directory intact until Portable assembly has copied it.
+# The empty `bundle.resources` list above is what keeps it out of the installers.
 
 
 if (-not $SkipBuild) {

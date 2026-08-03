@@ -49,6 +49,8 @@ def test_desktop_builder_requires_runtime_v1_and_portable_carries_it() -> None:
     assert "Move-Item -LiteralPath $portableZipStage" in script
     assert "$portablePublished = $true" in script
     assert "Tauri resource" in script
+    assert "Keep the staged source directory intact" in script
+    assert 'Remove-Item $TauriSourceRuntime -Recurse -Force' not in script
     assert "pip install" not in script
     assert "user-managed Python" not in script
 

@@ -2,7 +2,7 @@
 
 All notable changes to FigureSmith are documented in this file.
 
-## [0.6.3] — 2026-08-01
+## [0.6.4] — 2026-08-03
 
 ### Self-contained CPU Runtime V1
 

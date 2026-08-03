@@ -152,3 +152,24 @@ Phase 6 CI: added assert-no-weights.ps1, sync-version.ps1, extract-changelog.ps1
 ### Status
 
 [OK] **Completed**
+
+
+## Session 8: Complete CPU-only Runtime V1 release channel
+
+**Date**: 2026-08-03
+**Task**: Complete CPU-only Runtime V1 release channel
+**Branch**: `master`
+
+### Summary
+
+Selected and implemented the CPU-only Windows Runtime V1 release channel. CI validates both lock bundles but acquires/builds/uploads only CPU; cu128 remains a deterministic maintainer/manual path and split-large-assets stays unwired by decision. Updated schema-2 workflow contracts, docs, changelog, runtime spec, and measurements. Added a CPython 3.12 build-interpreter guard with zstandard documentation. Verified 315 Python tests, Rust 12 tests, frontend build, YAML/PowerShell parsing, lock validation, and an embedded clean-runner health/ready/system/shutdown smoke with no surviving process.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ecc4ab8` | (see git log) |
+
+### Status
+
+[OK] **Completed**

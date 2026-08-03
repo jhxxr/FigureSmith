@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 7
-- **Last Active**: 2026-07-28
+- **Total Sessions**: 8
+- **Last Active**: 2026-08-03
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~154 | Active |
+| `journal-1.md` | ~175 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 8 | 2026-08-03 | Complete CPU-only Runtime V1 release channel | `ecc4ab8` | `master` |
 | 7 | 2026-07-28 | FigureSmith GitHub Actions packaging | `63df3aa` | `master` |
 | 6 | 2026-07-28 | FigureSmith Phase 6 Windows packaging | `13e5776` | `master` |
 | 5 | 2026-07-28 | FigureSmith Phase 5 desktop UX | `a5a4454` | `master` |

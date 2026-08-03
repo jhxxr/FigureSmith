@@ -173,3 +173,25 @@ Selected and implemented the CPU-only Windows Runtime V1 release channel. CI val
 ### Status
 
 [OK] **Completed**
+
+
+## Session 9: Publish CPU Runtime and MSI Setup Release
+
+**Date**: 2026-08-03
+**Task**: Publish CPU Runtime and MSI Setup Release
+**Branch**: `master`
+
+### Summary
+
+Fixed the desktop packaging lifecycle, removed Portable packaging per user request, updated release workflow/docs/contracts to publish only CPU Runtime plus MSI and Setup EXE, and verified GitHub Actions run 30810339787 created the public v0.6.4 Release with six non-Portable assets.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b514eb7` | (see git log) |
+| `cd31001` | (see git log) |
+
+### Status
+
+[OK] **Completed**

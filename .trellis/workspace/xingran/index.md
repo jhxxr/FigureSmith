@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 8
+- **Total Sessions**: 9
 - **Last Active**: 2026-08-03
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~175 | Active |
+| `journal-1.md` | ~197 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 9 | 2026-08-03 | Publish CPU Runtime and MSI Setup Release | `b514eb7`, `cd31001` | `master` |
 | 8 | 2026-08-03 | Complete CPU-only Runtime V1 release channel | `ecc4ab8` | `master` |
 | 7 | 2026-07-28 | FigureSmith GitHub Actions packaging | `63df3aa` | `master` |
 | 6 | 2026-07-28 | FigureSmith Phase 6 Windows packaging | `13e5776` | `master` |

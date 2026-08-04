@@ -2,6 +2,16 @@
 
 All notable changes to FigureSmith are documented in this file.
 
+## [0.6.6] — 2026-08-04
+
+### Custom provider bindings
+
+- Replace fixed provider selections with persistent named bindings for ordinary AI and image-generation APIs.
+- Store API keys through the operating system credential store instead of browser storage or plaintext settings.
+- Support independent ordinary-AI and image-provider bindings throughout generation and import/continuation flows.
+- Allow explicitly configured remote API endpoints while retaining strict protections for remote assets and non-local SAM backends.
+- Normalize custom API base URLs and reject duplicated schemes, credentials, and malformed endpoints.
+
 ## [0.6.5] — 2026-08-04
 
 ### Runtime startup and installer fixes

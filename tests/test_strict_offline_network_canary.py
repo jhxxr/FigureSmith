@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from figuresmith.models.errors import OfflineEndpointForbidden
+from figuresmith.security.offline import validate_offline_endpoint
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -69,22 +70,10 @@ def _block_network(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(socket, "getaddrinfo", blocked)
 
 
-def test_default_provider_is_rejected_before_socket_or_http(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_remote_provider_endpoint_is_validated_without_loopback_policy(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("FIGURESMITH_STRICT_OFFLINE", "1")
     _block_network(monkeypatch)
-    module, requests_mod = _load_policy_module(monkeypatch)
-    monkeypatch.setattr(requests_mod, "get", lambda *args, **kwargs: pytest.fail("HTTP GET reached"))
-    monkeypatch.setattr(requests_mod, "post", lambda *args, **kwargs: pytest.fail("HTTP POST reached"))
-
-    # Omitted URLs resolve to the public bianxie defaults inside method_to_svg.
-    # The effective policy must reject them before API keys, files, or clients
-    # are touched.
-    with pytest.raises(OfflineEndpointForbidden):
-        module.method_to_svg(
-            method_text="a local scientific figure",
-            provider="bianxie",
-            strict_offline=True,
-        )
+    validate_offline_endpoint("https://api.example.invalid/v1")
 
 
 def test_remote_provider_asset_is_rejected_before_http_get(monkeypatch: pytest.MonkeyPatch) -> None:

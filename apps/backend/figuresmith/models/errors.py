@@ -76,8 +76,8 @@ class RemoteSamDisabled(FigureSmithError):
 
 class OfflineEndpointForbidden(FigureSmithError):
     code = "OFFLINE_ENDPOINT_FORBIDDEN"
-    message_zh = "严格离线模式下仅允许本机 loopback 端点"
-    message_en = "Only loopback endpoints are allowed in strict offline mode"
+    message_zh = "API 端点无效或不被允许"
+    message_en = "The configured API endpoint is invalid or not allowed"
 
 
 class UnsafeSvgContent(FigureSmithError):

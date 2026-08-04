@@ -155,10 +155,12 @@ class Job:
 
 class RunRequest(BaseModel):
     method_text: Optional[str] = None
-    provider: str = "bianxie"
+    provider: str = "custom"
+    provider_binding_id: Optional[str] = None
     api_key: Optional[str] = None
     base_url: Optional[str] = None
     image_provider: Optional[str] = None
+    image_provider_binding_id: Optional[str] = None
     image_api_key: Optional[str] = None
     image_base_url: Optional[str] = None
     image_model: Optional[str] = None
@@ -182,6 +184,14 @@ class RunRequest(BaseModel):
 
 
 app = FastAPI()
+
+try:
+    from figuresmith.api.models_routes import mount_models_routes
+except ImportError:  # Standalone vendor development without backend package.
+    mount_models_routes = None  # type: ignore
+
+if mount_models_routes is not None:
+    mount_models_routes(app, app_data_dir=APP_DATA_DIR)
 
 JOBS: dict[str, Job] = {}
 HISTORY_ARTIFACT_ORDER = [
@@ -259,6 +269,29 @@ def run_job(req: RunRequest) -> JSONResponse:
             detail="Provide exactly one of method_text or input_figure_path",
         )
 
+    # Resolve named bindings server-side so the browser sends only binding IDs.
+    if req.provider_binding_id or req.image_provider_binding_id:
+        try:
+            from figuresmith.models.provider_bindings import resolve_binding
+        except ImportError as exc:
+            raise HTTPException(status_code=500, detail="Provider binding support is unavailable") from exc
+        settings_path = APP_DATA_DIR / "settings.json"
+        try:
+            if req.provider_binding_id:
+                binding = resolve_binding(settings_path, req.provider_binding_id)
+                req.provider = "custom"
+                req.base_url = binding["base_url"]
+                req.api_key = binding["api_key"]
+                req.svg_model = req.svg_model or binding.get("text_model")
+            if req.image_provider_binding_id:
+                image_binding = resolve_binding(settings_path, req.image_provider_binding_id)
+                req.image_provider = "custom"
+                req.image_base_url = image_binding["base_url"]
+                req.image_api_key = image_binding["api_key"]
+                req.image_model = req.image_model or image_binding.get("image_model")
+        except (KeyError, ValueError, RuntimeError) as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid provider binding: {exc}") from exc
+
     # --- FIGURESMITH-BEGIN: server-strict-offline ---
     def _env_flag(name: str, default: bool = False) -> bool:
         raw = os.environ.get(name)
@@ -284,25 +317,23 @@ def run_job(req: RunRequest) -> JSONResponse:
             ),
         )
 
-    # Optional: validate OpenAI-compatible base URLs are loopback under strict mode.
-    if strict_offline:
-        try:
-            from figuresmith.security.offline import validate_offline_endpoint
-        except ImportError:
-            validate_offline_endpoint = None  # type: ignore
-        if validate_offline_endpoint is not None:
-            for label, url in (("base_url", req.base_url), ("image_base_url", req.image_base_url)):
-                if url:
-                    try:
-                        validate_offline_endpoint(url)
-                    except Exception as exc:
-                        raise HTTPException(
-                            status_code=400,
-                            detail=(
-                                f"[OFFLINE_ENDPOINT_FORBIDDEN] {label}={url!r} "
-                                f"is not a loopback endpoint under strict offline: {exc}"
-                            ),
-                        ) from exc
+    # Validate configured API URLs for syntax/credentials only. Remote API
+    # bindings are intentionally allowed even when local model offline flags
+    # are enabled.
+    try:
+        from figuresmith.security.offline import validate_offline_endpoint
+    except ImportError:
+        validate_offline_endpoint = None  # type: ignore
+    if validate_offline_endpoint is not None:
+        for label, url in (("base_url", req.base_url), ("image_base_url", req.image_base_url)):
+            if url:
+                try:
+                    validate_offline_endpoint(url)
+                except Exception as exc:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"[INVALID_API_ENDPOINT] {label}={url!r}: {exc}",
+                    ) from exc
     # --- FIGURESMITH-END: server-strict-offline ---
 
     job_id = datetime.now().strftime("%Y%m%d_%H%M%S_") + uuid.uuid4().hex[:8]

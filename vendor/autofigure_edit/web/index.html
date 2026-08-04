@@ -73,28 +73,17 @@
               <label class="field-label" id="providerLabel" for="provider">SVG / Reasoning Provider</label>
               <div class="field-caption" id="providerCaption">Controls text reasoning and SVG reconstruction.</div>
             </div>
-            <input id="provider" type="hidden" value="bianxie" />
-            <div id="providerButtons" class="choice-grid">
-              <button type="button" class="choice-card" data-value="bianxie">
-                <span class="choice-title" id="providerBianxieTitle">Bianxie AI</span>
-                <span class="choice-meta" id="providerBianxieMeta">Mainland China-friendly OpenAI-compatible route</span>
-              </button>
-              <button type="button" class="choice-card" data-value="gemini">
-                <span class="choice-title" id="providerGeminiTitle">Gemini</span>
-                <span class="choice-meta" id="providerGeminiMeta">Google multimodal route</span>
-              </button>
-              <button type="button" class="choice-card" data-value="openai_response">
-                <span class="choice-title" id="providerOpenAIResponsesTitle">OpenAI Responses</span>
-                <span class="choice-meta" id="providerOpenAIResponsesMeta">Use the Responses API format</span>
-              </button>
-              <button type="button" class="choice-card" data-value="openrouter">
-                <span class="choice-title" id="providerOpenRouterTitle">OpenRouter</span>
-                <span class="choice-meta" id="providerOpenRouterMeta">OpenAI-compatible relay</span>
-              </button>
-              <button type="button" class="choice-card" data-value="custom">
-                <span class="choice-title" id="providerCustomTitle">Custom</span>
-                <span class="choice-meta" id="providerCustomMeta">Custom OpenAI-compatible endpoint</span>
-              </button>
+            <input id="provider" type="hidden" value="custom" />
+            <div id="providerButtons" class="binding-editor">
+              <label class="field-label" for="aiBindingSelect">普通 AI 提供商绑定</label>
+              <select id="aiBindingSelect" class="input"></select>
+              <div class="binding-actions">
+                <button type="button" class="button secondary" id="aiBindingNew">新建</button>
+                <button type="button" class="button secondary" id="aiBindingSave">保存</button>
+                <button type="button" class="button secondary" id="aiBindingDelete">删除</button>
+              </div>
+              <input id="providerBindingName" type="text" class="input" placeholder="例如：Orbit AI" />
+              <div class="hint">绑定名称、Base URL 和模型保存在本机；API Key 由安全存储管理。</div>
             </div>
           </div>
 
@@ -112,14 +101,17 @@
               <label class="field-label" id="imageProviderLabel" for="imageProvider">Step 1 Image Provider</label>
               <div class="field-caption" id="imageProviderCaption">You can keep it linked to the SVG path or override it.</div>
             </div>
-            <input id="imageProvider" type="hidden" value="same" />
-            <div id="imageProviderButtons" class="choice-pills">
-              <button type="button" class="choice-pill" id="imageProviderSameLabel" data-value="same">Same as SVG path</button>
-              <button type="button" class="choice-pill" id="imageProviderOpenAILabel" data-value="openai">OpenAI Images</button>
-              <button type="button" class="choice-pill" id="imageProviderBianxieLabel" data-value="bianxie">Bianxie AI</button>
-              <button type="button" class="choice-pill" id="imageProviderGeminiLabel" data-value="gemini">Gemini</button>
-              <button type="button" class="choice-pill" id="imageProviderOpenRouterLabel" data-value="openrouter">OpenRouter</button>
-              <button type="button" class="choice-pill" id="imageProviderCustomLabel" data-value="custom">Custom</button>
+            <input id="imageProvider" type="hidden" value="custom" />
+            <div id="imageProviderButtons" class="binding-editor">
+              <label class="field-label" for="imageBindingSelect">图片生成 API 提供商绑定</label>
+              <select id="imageBindingSelect" class="input"></select>
+              <div class="binding-actions">
+                <button type="button" class="button secondary" id="imageBindingNew">新建</button>
+                <button type="button" class="button secondary" id="imageBindingSave">保存</button>
+                <button type="button" class="button secondary" id="imageBindingDelete">删除</button>
+              </div>
+              <input id="imageProviderBindingName" type="text" class="input" placeholder="例如：Orbit Image" />
+              <div class="hint">可与普通 AI 绑定相同，也可以配置独立的图片生成 API。</div>
             </div>
           </div>
 
@@ -157,11 +149,7 @@
               placeholder="https://your-provider.example/v1"
             />
             <div class="hint" id="baseUrlHint">Required for Custom. Use the OpenAI-compatible /v1 root URL, not a specific endpoint path.</div>
-            <!-- FIGURESMITH-BEGIN phase5-offline-hint -->
-            <div class="hint" id="strictOfflineBaseUrlHint">
-              Desktop strict offline blocks non-loopback endpoints. Prefer a local OpenAI-compatible gateway when offline mode is on.
-            </div>
-            <!-- FIGURESMITH-END phase5-offline-hint -->
+            <!-- API bindings may use remote endpoints; strict offline only controls local model downloads. -->
           </div>
 
           <div class="field-group" id="imageApiKeyGroup" hidden>

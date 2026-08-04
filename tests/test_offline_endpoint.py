@@ -76,10 +76,8 @@ def test_validate_offline_endpoint_allows(url: str) -> None:
         "https://huggingface.co",
     ],
 )
-def test_validate_offline_endpoint_denies(url: str) -> None:
-    with pytest.raises(OfflineEndpointForbidden) as exc_info:
-        validate_offline_endpoint(url)
-    assert exc_info.value.code == "OFFLINE_ENDPOINT_FORBIDDEN"
+def test_validate_offline_endpoint_allows_configured_remote_urls(url: str) -> None:
+    validate_offline_endpoint(url)
 
 
 def test_validate_offline_endpoint_empty() -> None:
@@ -100,13 +98,12 @@ def test_effective_offline_policy_runs_after_defaults() -> None:
         image_provider="custom",
         image_base_url="http://127.0.0.1:11434/v1",
     )
-    with pytest.raises(OfflineEndpointForbidden):
-        validate_effective_offline_policy(
-            provider="bianxie",
-            base_url="https://api.bianxie.ai/v1",
-            image_provider="bianxie",
-            image_base_url="https://api.bianxie.ai/v1",
-        )
+    validate_effective_offline_policy(
+        provider="custom",
+        base_url="https://api.openai.com/v1",
+        image_provider="custom",
+        image_base_url="https://api.openai.com/v1",
+    )
 
 
 def test_apply_strict_offline_env_sets_flags(monkeypatch: pytest.MonkeyPatch) -> None:

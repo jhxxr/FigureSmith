@@ -166,11 +166,11 @@ def is_loopback_host(host: str, *, resolve_dns: bool = False) -> bool:
 
 
 def validate_offline_endpoint(base_url: str, *, resolve_dns: bool = False) -> None:
-    """Validate that ``base_url`` targets a loopback host only.
+    """Validate a configured HTTP(S) endpoint.
 
-    Raises:
-        OfflineEndpointForbidden: if the URL host is missing or non-loopback.
-        ValueError: if the URL cannot be parsed.
+    Endpoint validation no longer imposes a loopback-only policy. Strict offline
+    controls local model downloads, while an explicitly configured API may be
+    remote. Credentials in URLs and malformed endpoints remain forbidden.
     """
     # Lazy import avoids circular dependency with figuresmith.models package init.
     from figuresmith.models.errors import OfflineEndpointForbidden
@@ -179,12 +179,14 @@ def validate_offline_endpoint(base_url: str, *, resolve_dns: bool = False) -> No
         raise OfflineEndpointForbidden(detail="empty base_url")
 
     raw = str(base_url).strip()
+    if raw.count("://") > 1:
+        raise OfflineEndpointForbidden(detail="endpoint contains a duplicated URL scheme")
     # Allow bare host:port by giving urlparse a scheme when missing.
     to_parse = raw if "://" in raw else f"http://{raw}"
     parsed = urlparse(to_parse)
     if parsed.scheme not in {"http", "https"}:
         raise OfflineEndpointForbidden(
-            detail=f"scheme={parsed.scheme!r} is not an HTTP(S) loopback endpoint"
+            detail=f"scheme={parsed.scheme!r} is not an HTTP(S) endpoint"
         )
     if parsed.username or parsed.password:
         raise OfflineEndpointForbidden(detail="endpoint credentials are not allowed")
@@ -194,13 +196,9 @@ def validate_offline_endpoint(base_url: str, *, resolve_dns: bool = False) -> No
             detail=f"could not parse hostname from base_url={base_url!r}"
         )
 
-    if not is_loopback_host(host, resolve_dns=resolve_dns):
-        raise OfflineEndpointForbidden(
-            detail=(
-                f"host={host!r} from base_url={base_url!r} is not loopback "
-                "(127.0.0.1 / ::1 / localhost only)"
-            )
-        )
+    # Remote endpoints are allowed when explicitly configured. The strict
+    # offline flag must not turn a valid API binding into a loopback-only URL.
+    return
 
 
 def validate_effective_offline_policy(
@@ -210,29 +208,27 @@ def validate_effective_offline_policy(
     image_provider: str,
     image_base_url: str,
 ) -> None:
-    """Reject effective provider defaults before an outbound client is built.
+    """Validate effective configured API endpoints before a client is built.
 
-    Strict mode permits only an explicitly selected OpenAI-compatible ``custom``
-    provider pointed at loopback. This is intentionally evaluated after the
-    vendor has resolved aliases and all default URLs.
+    Provider names are no longer restricted to the former preset list; a
+    binding may target any valid HTTP(S) endpoint.
     """
     from figuresmith.models.errors import OfflineEndpointForbidden
 
-    if provider != "custom":
-        raise OfflineEndpointForbidden(
-            detail=f"provider={provider!r} is a public/cloud provider"
-        )
-    if image_provider != "custom":
-        raise OfflineEndpointForbidden(
-            detail=f"image_provider={image_provider!r} is a public/cloud provider"
-        )
     validate_offline_endpoint(base_url)
     validate_offline_endpoint(image_base_url)
 
 
 def validate_offline_asset_url(url: str) -> None:
     """Allow local data images or loopback HTTP assets, rejecting remote URLs."""
+    from figuresmith.models.errors import OfflineEndpointForbidden
+
     raw = str(url or "").strip()
     if raw.lower().startswith("data:image/"):
         return
     validate_offline_endpoint(raw)
+    parsed = urlparse(raw if "://" in raw else f"http://{raw}")
+    if not parsed.hostname or not is_loopback_host(parsed.hostname):
+        raise OfflineEndpointForbidden(
+            detail=f"remote asset URL is not allowed in strict offline mode: {url!r}"
+        )

@@ -103,6 +103,33 @@ PUBLIC_PROVIDER_CHOICES = ("openrouter", "bianxie", "custom", "gemini", "openai_
 PUBLIC_IMAGE_PROVIDER_CHOICES = ("openrouter", "bianxie", "custom", "gemini", "openai")
 
 
+def normalize_api_base_url(value: str) -> str:
+    """Canonicalize one user-supplied HTTP(S) API base URL.
+
+    A complete URL is treated as authoritative; it is never prefixed or
+    concatenated with another URL.
+    """
+    from urllib.parse import urlparse
+
+    raw = str(value or "").strip()
+    if not raw:
+        raise ValueError("API base URL is required")
+    # A complete URL is authoritative. Reject a second scheme instead of
+    # allowing malformed values such as https://hosthttps://host through.
+    if raw.count("://") > 1:
+        raise ValueError(f"Invalid API base URL: duplicated scheme in {value!r}")
+    candidate = raw if "://" in raw else f"https://{raw}"
+    parsed = urlparse(candidate)
+    if parsed.path.startswith("//") or "://" in parsed.path or "://" in parsed.netloc:
+        raise ValueError(f"Invalid API base URL: duplicated scheme in {value!r}")
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError(f"Invalid API base URL: {value!r}")
+    if parsed.username or parsed.password:
+        raise ValueError("API base URL must not contain credentials")
+    path = parsed.path.rstrip("/")
+    return f"{parsed.scheme}://{parsed.netloc}{path}"
+
+
 def _custom_base_url_default() -> Optional[str]:
     value = os.environ.get("AUTOFIGURE_CUSTOM_BASE_URL")
     return value.strip() if value and value.strip() else None
@@ -3499,6 +3526,8 @@ def method_to_svg(
 
     if base_url is None:
         base_url = config["base_url"]
+    if base_url:
+        base_url = normalize_api_base_url(base_url)
     if provider == "custom" and not base_url:
         raise ValueError(
             "Custom provider requires --base_url or AUTOFIGURE_CUSTOM_BASE_URL. "
@@ -3510,6 +3539,8 @@ def method_to_svg(
         image_base_url = base_url
     if image_base_url is None:
         image_base_url = image_config["base_url"]
+    if image_base_url:
+        image_base_url = normalize_api_base_url(image_base_url)
     strict_offline_effective = _figuresmith_strict_offline(strict_offline)
     _figuresmith_validate_effective_offline(
         provider=provider,

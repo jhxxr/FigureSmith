@@ -87,28 +87,17 @@
               <label class="field-label" id="importProviderLabel" for="importProvider">SVG / Reasoning Provider</label>
               <div class="field-caption" id="importProviderCaption">Controls multimodal SVG reconstruction.</div>
             </div>
-            <input id="importProvider" type="hidden" value="bianxie" />
-            <div id="importProviderButtons" class="choice-grid">
-              <button type="button" class="choice-card" data-value="bianxie">
-                <span class="choice-title" id="importProviderBianxieTitle">Bianxie AI</span>
-                <span class="choice-meta" id="importProviderBianxieMeta">Mainland China-friendly OpenAI-compatible route</span>
-              </button>
-              <button type="button" class="choice-card" data-value="gemini">
-                <span class="choice-title" id="importProviderGeminiTitle">Gemini</span>
-                <span class="choice-meta" id="importProviderGeminiMeta">Google multimodal route</span>
-              </button>
-              <button type="button" class="choice-card" data-value="openai_response">
-                <span class="choice-title" id="importProviderOpenAIResponsesTitle">OpenAI Responses</span>
-                <span class="choice-meta" id="importProviderOpenAIResponsesMeta">Use the Responses API format</span>
-              </button>
-              <button type="button" class="choice-card" data-value="openrouter">
-                <span class="choice-title" id="importProviderOpenRouterTitle">OpenRouter</span>
-                <span class="choice-meta" id="importProviderOpenRouterMeta">OpenAI-compatible relay</span>
-              </button>
-              <button type="button" class="choice-card" data-value="custom">
-                <span class="choice-title" id="importProviderCustomTitle">Custom</span>
-                <span class="choice-meta" id="importProviderCustomMeta">Custom OpenAI-compatible endpoint</span>
-              </button>
+            <input id="importProvider" type="hidden" value="custom" />
+            <div id="importProviderButtons" class="binding-editor">
+              <label class="field-label" for="importBindingSelect">普通 AI 提供商绑定</label>
+              <select id="importBindingSelect" class="input"></select>
+              <input id="importProviderBindingName" type="text" class="input" placeholder="例如：Orbit AI" />
+              <div class="binding-actions">
+                <button type="button" class="button secondary" id="importBindingNew">新建</button>
+                <button type="button" class="button secondary" id="importBindingSave">保存</button>
+                <button type="button" class="button secondary" id="importBindingDelete">删除</button>
+              </div>
+              <div class="hint">绑定配置保存在本机，API Key 由安全存储管理。</div>
             </div>
           </div>
 

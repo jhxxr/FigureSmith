@@ -12,8 +12,22 @@ from pydantic import BaseModel, Field
 from figuresmith import __version__
 from figuresmith.models.errors import FigureSmithError
 from figuresmith.models.manager import ModelManager, error_payload
+from figuresmith.models.provider_bindings import (
+    delete_binding,
+    list_bindings,
+    save_binding,
+)
 
 router = APIRouter(prefix="/api/models", tags=["models"])
+
+
+class ProviderBindingRequest(BaseModel):
+    id: Optional[str] = None
+    name: str
+    base_url: str
+    text_model: str = ""
+    image_model: str = ""
+    api_key: Optional[str] = None
 
 
 class ImportSam3Request(BaseModel):
@@ -52,6 +66,34 @@ def _http_error(exc: BaseException) -> HTTPException:
     elif code == "INTERNAL_ERROR":
         status = 500
     return HTTPException(status_code=status, detail=payload)
+
+
+@router.get("/bindings")
+def get_provider_bindings(request: Request) -> dict[str, Any]:
+    return {"bindings": list_bindings(_manager_from_request(request).app_data_dir / "settings.json")}
+
+
+@router.post("/bindings")
+def put_provider_binding(body: ProviderBindingRequest, request: Request) -> dict[str, Any]:
+    try:
+        item = save_binding(
+            _manager_from_request(request).app_data_dir / "settings.json",
+            binding_id=body.id,
+            name=body.name,
+            base_url=body.base_url,
+            text_model=body.text_model,
+            image_model=body.image_model,
+            api_key=body.api_key,
+        )
+        return {"ok": True, "binding": item}
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/bindings/{binding_id}")
+def remove_provider_binding(binding_id: str, request: Request) -> dict[str, Any]:
+    delete_binding(_manager_from_request(request).app_data_dir / "settings.json", binding_id)
+    return {"ok": True}
 
 
 @router.get("")

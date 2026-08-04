@@ -1,6 +1,7 @@
 (() => {
   const INPUT_STATE_KEY = "autofigure_input_state_v2";
   const IMPORT_STATE_KEY = "autofigure_import_state_v1";
+  const PROVIDER_BINDINGS_KEY = "figuresmith_provider_bindings_v1";
   const LOCALE_KEY = "autofigure_locale_v1";
   const BIANXIE_BASE_URL = "https://api.bianxie.ai/v1";
   const DEFAULT_CUSTOM_BASE_URL = "";
@@ -191,16 +192,16 @@
         import_title: "Import Existing Figure",
         import_copy:
           "Use the import page when you already have the academic raster figure and want to continue directly from segmentation and SVG reconstruction.",
-        presets_title: "Recommended Presets",
-        preset1_title: "Preset 1: OpenAI Main Route",
+        presets_title: "Binding examples",
+        preset1_title: "Binding example: one shared API",
         preset1_copy:
-          "SVG / Reasoning Provider: OpenAI Responses. Step 1 Image Provider: Same as SVG path. Image Model: gpt-image-2. SVG Model: gpt-5.5.",
-        preset2_title: "Preset 2: Gemini + OpenAI Images",
+          "Create one named binding with its text and image models, then select it for both routes.",
+        preset2_title: "Binding example: separate image API",
         preset2_copy:
-          "SVG / Reasoning Provider: Gemini. Step 1 Image Provider: OpenAI Images. Image Model: gpt-image-2. Use this if you prefer Gemini SVG reconstruction but OpenAI image generation.",
-        preset3_title: "Preset 3: Custom Relay",
+          "Create separate named bindings when image generation and SVG reconstruction use different APIs.",
+        preset3_title: "Binding example: private gateway",
         preset3_copy:
-          "Choose Bianxie AI for the built-in aggregate route, or choose Custom and fill Custom API URL when you use your own OpenAI-compatible relay.",
+          "Create a named binding for your OpenAI-compatible gateway and reuse it whenever needed.",
         pipeline_steps_title: "What the Pipeline Actually Does",
         // FIGURESMITH-BEGIN phase5-pipeline-labels
         step1_kicker: "Step 1",
@@ -523,8 +524,8 @@
         import_title: "导入已有图片",
         import_copy:
           "当你已经有学术位图，只想继续做分割和 SVG 重建时，使用导入页面。",
-        presets_title: "推荐填写方案",
-        preset1_title: "方案 1：OpenAI 主路线",
+        presets_title: "绑定示例",
+        preset1_title: "绑定示例：同一套 API",
         preset1_copy:
           "SVG / 推理 Provider 选 OpenAI Responses，步骤 1 图片 Provider 保持与 SVG 路径一致，Image Model 用 gpt-image-2，SVG Model 用 gpt-5.5。",
         preset2_title: "方案 2：Gemini + OpenAI Images",
@@ -787,16 +788,37 @@
   }
 
   function normalizeProviderValue(value) {
-    return value;
+    // Provider bindings are user-defined OpenAI-compatible endpoints.
+    return "custom";
   }
 
   function normalizeImageProviderValue(value) {
-    return value;
+    return "custom";
   }
 
   function normalizeCustomBaseUrl(value) {
     const trimmed = typeof value === "string" ? value.trim() : "";
     return LEGACY_CUSTOM_BASE_URLS.has(trimmed) ? "" : trimmed;
+  }
+
+  async function requestProviderBindings() {
+    const response = await fetch("/api/models/bindings");
+    if (!response.ok) throw new Error("Failed to load provider bindings");
+    const data = await response.json();
+    return Array.isArray(data.bindings) ? data.bindings : [];
+  }
+
+  async function saveProviderBinding(binding) {
+    const response = await fetch("/api/models/bindings", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(binding),
+    });
+    if (!response.ok) throw new Error(await response.text() || "Failed to save provider binding");
+    return (await response.json()).binding;
+  }
+
+  async function deleteProviderBinding(id) {
+    const response = await fetch(`/api/models/bindings/${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (!response.ok) throw new Error(await response.text() || "Failed to delete provider binding");
   }
 
   const page = document.body.dataset.page;
@@ -852,6 +874,86 @@
     const samApiKeyGroup = $("samApiKeyGroup");
     const samApiKeyInput = $("samApiKey");
     let uploadedReferencePath = null;
+    let providerBindings = [];
+    let selectedAiBindingId = null;
+    let selectedImageBindingId = null;
+
+    function renderBindingSelect(select, kind, selectedId) {
+      if (!select) return;
+      select.textContent = "";
+      for (const binding of providerBindings) {
+        const option = document.createElement("option");
+        option.value = binding.id;
+        option.textContent = binding.name;
+        option.selected = binding.id === selectedId;
+        select.appendChild(option);
+      }
+      if (!providerBindings.length) {
+        const option = document.createElement("option");
+        option.value = "";
+        option.textContent = "(请先新建绑定)";
+        select.appendChild(option);
+      }
+      if (kind === "ai") selectedAiBindingId = select.value || null;
+      else selectedImageBindingId = select.value || null;
+    }
+
+    function applyBinding(binding, kind) {
+      if (!binding) return;
+      if (kind === "ai") {
+        selectedAiBindingId = binding.id;
+        if (baseUrlInput) baseUrlInput.value = binding.base_url || "";
+        if (svgModelInput) svgModelInput.value = binding.text_model || "";
+        if ($("apiKey")) $("apiKey").value = "";
+        if ($("providerBindingName")) $("providerBindingName").value = binding.name || "";
+      } else {
+        selectedImageBindingId = binding.id;
+        if (imageBaseUrlInput) imageBaseUrlInput.value = binding.base_url || "";
+        if (imageModelInput) imageModelInput.value = binding.image_model || "";
+        if (imageApiKeyInput) imageApiKeyInput.value = "";
+        if ($("imageProviderBindingName")) $("imageProviderBindingName").value = binding.name || "";
+      }
+      syncRoutingControls();
+    }
+
+    async function refreshBindings() {
+      try {
+        providerBindings = await requestProviderBindings();
+        renderBindingSelect($("aiBindingSelect"), "ai", selectedAiBindingId);
+        renderBindingSelect($("imageBindingSelect"), "image", selectedImageBindingId);
+        applyBinding(providerBindings.find((item) => item.id === selectedAiBindingId) || providerBindings[0], "ai");
+        applyBinding(providerBindings.find((item) => item.id === selectedImageBindingId) || providerBindings[0], "image");
+      } catch (_err) { providerBindings = []; }
+    }
+
+    async function saveBinding(kind) {
+      const image = kind === "image";
+      const select = $(image ? "imageBindingSelect" : "aiBindingSelect");
+      const nameInput = $(image ? "imageProviderBindingName" : "providerBindingName");
+      const binding = await saveProviderBinding({
+        id: select?.value || null,
+        name: nameInput?.value.trim() || "未命名绑定",
+        base_url: normalizeCustomBaseUrl((image ? imageBaseUrlInput : baseUrlInput)?.value || ""),
+        text_model: svgModelInput?.value.trim() || "",
+        image_model: imageModelInput?.value.trim() || "",
+        api_key: $(image ? "imageApiKey" : "apiKey")?.value.trim() || null,
+      });
+      providerBindings = await requestProviderBindings();
+      if (image) selectedImageBindingId = binding.id; else selectedAiBindingId = binding.id;
+      renderBindingSelect($("aiBindingSelect"), "ai", selectedAiBindingId);
+      renderBindingSelect($("imageBindingSelect"), "image", selectedImageBindingId);
+      applyBinding(binding, kind);
+    }
+
+    function wireBindingControls() {
+      const pairs = [["ai", "aiBindingSelect", "aiBindingNew", "aiBindingSave", "aiBindingDelete"], ["image", "imageBindingSelect", "imageBindingNew", "imageBindingSave", "imageBindingDelete"]];
+      for (const [kind, selectId, newId, saveId, deleteId] of pairs) {
+        $(selectId)?.addEventListener("change", () => applyBinding(providerBindings.find((item) => item.id === $(selectId).value), kind));
+        $(newId)?.addEventListener("click", () => { if (kind === "ai") selectedAiBindingId = null; else selectedImageBindingId = null; $(kind === "ai" ? "providerBindingName" : "imageProviderBindingName").value = ""; });
+        $(saveId)?.addEventListener("click", async () => { try { await saveBinding(kind); } catch (err) { errorMsg.textContent = err.message; } });
+        $(deleteId)?.addEventListener("click", async () => { const id = $(selectId)?.value; if (!id) return; try { await deleteProviderBinding(id); await refreshBindings(); } catch (err) { errorMsg.textContent = err.message; } });
+      }
+    }
 
     function getProviderLabel(provider) {
       const normalized = normalizeProviderValue(provider);
@@ -898,12 +1000,14 @@
       const state = {
         methodText: $("methodText")?.value ?? "",
         provider: normalizeProviderValue(providerInput?.value ?? "bianxie"),
+        providerBindingId: selectedAiBindingId,
         imageProvider: normalizeImageProviderValue(imageProviderInput?.value ?? "same"),
+        imageProviderBindingId: selectedImageBindingId,
         imageModel: imageModelInput?.value ?? "",
         svgModel: svgModelInput?.value ?? "",
-        apiKey: $("apiKey")?.value ?? "",
+        apiKey: "",
         baseUrl: normalizeCustomBaseUrl(baseUrlInput?.value ?? DEFAULT_CUSTOM_BASE_URL),
-        imageApiKey: imageApiKeyInput?.value ?? "",
+        imageApiKey: "",
         imageBaseUrl: normalizeCustomBaseUrl(imageBaseUrlInput?.value ?? DEFAULT_CUSTOM_BASE_URL),
         optimizeIterations: $("optimizeIterations")?.value ?? "0",
         imageSize: imageSizeInput?.value ?? "4K",
@@ -944,14 +1048,12 @@
       if (typeof state.svgModel === "string" && svgModelInput) {
         svgModelInput.value = state.svgModel;
       }
-      if (typeof state.apiKey === "string") {
-        $("apiKey").value = state.apiKey;
-      }
+      // API keys are never restored from browser storage; use secure binding storage.
       if (typeof state.baseUrl === "string" && baseUrlInput) {
         baseUrlInput.value = normalizeCustomBaseUrl(state.baseUrl);
       }
       if (typeof state.imageApiKey === "string" && imageApiKeyInput) {
-        imageApiKeyInput.value = state.imageApiKey;
+        imageApiKeyInput.value = "";
       }
       if (typeof state.imageBaseUrl === "string" && imageBaseUrlInput) {
         imageBaseUrlInput.value = normalizeCustomBaseUrl(state.imageBaseUrl);
@@ -1211,6 +1313,8 @@
     }
 
     applyInputState();
+    wireBindingControls();
+    refreshBindings();
 
     setupChoiceGroup(providerButtons, providerInput);
     setupChoiceGroup(imageProviderButtons, imageProviderInput);
@@ -1403,11 +1507,13 @@
       const payload = {
         method_text: methodText,
         provider,
-        api_key: $("apiKey").value.trim() || null,
+        provider_binding_id: selectedAiBindingId,
+        api_key: selectedAiBindingId ? null : $("apiKey").value.trim() || null,
         base_url: provider === "custom" ? getResolvedPrimaryBaseUrl() : null,
         image_provider: imageProvider !== "same" ? imageProvider : null,
+        image_provider_binding_id: selectedImageBindingId,
         image_api_key:
-          imageProvider !== "same" ? imageApiKeyInput?.value.trim() || null : null,
+          selectedImageBindingId ? null : imageProvider !== "same" ? imageApiKeyInput?.value.trim() || null : null,
         image_base_url: imageProvider === "custom" ? getResolvedImageBaseUrl() : null,
         image_model: selectedImageModel,
         svg_model: selectedSvgModel,
@@ -1466,6 +1572,67 @@
     const samApiKeyGroup = $("importSamApiKeyGroup");
     const samApiKeyInput = $("importSamApiKey");
     let uploadedFigurePath = null;
+    let importBindings = [];
+    let selectedImportBindingId = null;
+
+    function renderImportBindings(selectedId) {
+      const select = $("importBindingSelect");
+      if (!select) return;
+      select.textContent = "";
+      for (const binding of importBindings) {
+        const option = document.createElement("option");
+        option.value = binding.id;
+        option.textContent = binding.name;
+        option.selected = binding.id === selectedId;
+        select.appendChild(option);
+      }
+      if (!importBindings.length) {
+        const option = document.createElement("option");
+        option.value = "";
+        option.textContent = "(请先新建绑定)";
+        select.appendChild(option);
+      }
+      selectedImportBindingId = select.value || null;
+    }
+
+    function applyImportBinding(binding) {
+      if (!binding) return;
+      selectedImportBindingId = binding.id;
+      if (baseUrlInput) baseUrlInput.value = binding.base_url || "";
+      if (svgModelInput) svgModelInput.value = binding.text_model || "";
+      if ($("importProviderBindingName")) $("importProviderBindingName").value = binding.name || "";
+      if (apiKeyInput) apiKeyInput.value = "";
+      saveImportState();
+    }
+
+    async function refreshImportBindings() {
+      try {
+        importBindings = await requestProviderBindings();
+        renderImportBindings(selectedImportBindingId);
+        applyImportBinding(
+          importBindings.find((item) => item.id === selectedImportBindingId) || importBindings[0],
+        );
+      } catch (_err) {
+        importBindings = [];
+        renderImportBindings(null);
+      }
+    }
+
+    async function saveImportBinding() {
+      const select = $("importBindingSelect");
+      const binding = await saveProviderBinding({
+        id: select?.value || null,
+        name: $("importProviderBindingName")?.value.trim() || "未命名绑定",
+        base_url: normalizeCustomBaseUrl(baseUrlInput?.value || ""),
+        text_model: svgModelInput?.value.trim() || "",
+        image_model: "",
+        api_key: apiKeyInput?.value.trim() || null,
+      });
+      importBindings = await requestProviderBindings();
+      selectedImportBindingId = binding.id;
+      renderImportBindings(selectedImportBindingId);
+      applyImportBinding(binding);
+    }
 
     function getProviderLabel(provider) {
       const normalized = normalizeProviderValue(provider);
@@ -1500,8 +1667,9 @@
     function saveImportState() {
       const state = {
         provider: normalizeProviderValue(providerInput?.value ?? "bianxie"),
+        providerBindingId: selectedImportBindingId,
         svgModel: svgModelInput?.value ?? "",
-        apiKey: apiKeyInput?.value ?? "",
+        apiKey: "",
         baseUrl: normalizeCustomBaseUrl(baseUrlInput?.value ?? DEFAULT_CUSTOM_BASE_URL),
         // FIGURESMITH-BEGIN phase5-force-local-sam
         samBackend: forceLocalSamBackend(samBackend?.value),
@@ -1524,15 +1692,13 @@
       if (!state) {
         return;
       }
-      if (typeof state.provider === "string" && providerInput) {
-        providerInput.value = normalizeProviderValue(state.provider);
+      if (typeof state.providerBindingId === "string" && state.providerBindingId) {
+        selectedImportBindingId = state.providerBindingId;
       }
       if (typeof state.svgModel === "string" && svgModelInput) {
         svgModelInput.value = state.svgModel;
       }
-      if (typeof state.apiKey === "string" && apiKeyInput) {
-        apiKeyInput.value = state.apiKey;
-      }
+      // API keys are never restored from browser storage; use secure binding storage.
       if (typeof state.baseUrl === "string" && baseUrlInput) {
         baseUrlInput.value = normalizeCustomBaseUrl(state.baseUrl);
       }
@@ -1638,6 +1804,31 @@
 
     applyImportState();
     setupChoiceGroup(providerButtons, providerInput);
+    refreshImportBindings();
+    $("importBindingSelect")?.addEventListener("change", () => {
+      applyImportBinding(importBindings.find((item) => item.id === $("importBindingSelect").value));
+    });
+    $("importBindingNew")?.addEventListener("click", () => {
+      selectedImportBindingId = null;
+      if ($("importBindingSelect")) $("importBindingSelect").value = "";
+      if ($("importProviderBindingName")) $("importProviderBindingName").value = "";
+      if (baseUrlInput) baseUrlInput.value = "";
+      if (svgModelInput) svgModelInput.value = "";
+      if (apiKeyInput) apiKeyInput.value = "";
+      saveImportState();
+    });
+    $("importBindingSave")?.addEventListener("click", async () => {
+      try { await saveImportBinding(); } catch (err) { errorMsg.textContent = err.message || "保存绑定失败"; }
+    });
+    $("importBindingDelete")?.addEventListener("click", async () => {
+      const id = $("importBindingSelect")?.value;
+      if (!id) return;
+      try {
+        await deleteProviderBinding(id);
+        selectedImportBindingId = null;
+        await refreshImportBindings();
+      } catch (err) { errorMsg.textContent = err.message || "删除绑定失败"; }
+    });
 
     function applyImportLocale() {
       setText("importBrandTitle", t("importPage.brand"));
@@ -1746,12 +1937,12 @@
         errorMsg.textContent = t("importPage.error_upload_required");
         return;
       }
-      if (!(apiKeyInput?.value.trim() || "")) {
+      if (!(selectedImportBindingId || apiKeyInput?.value.trim())) {
         errorMsg.textContent = t("importPage.error_api_key_required");
         return;
       }
-      const provider = normalizeProviderValue(providerInput?.value ?? "bianxie");
-      if (provider === "custom" && !getResolvedImportBaseUrl()) {
+      const provider = normalizeProviderValue(providerInput?.value ?? "custom");
+      if (!selectedImportBindingId && !getResolvedImportBaseUrl()) {
         errorMsg.textContent = t("importPage.error_custom_base_url_required");
         return;
       }
@@ -1762,7 +1953,8 @@
       const payload = {
         input_figure_path: uploadedFigurePath,
         provider,
-        api_key: apiKeyInput?.value.trim() || null,
+        provider_binding_id: selectedImportBindingId,
+        api_key: selectedImportBindingId ? null : apiKeyInput?.value.trim() || null,
         base_url: provider === "custom" ? getResolvedImportBaseUrl() : null,
         svg_model: svgModelInput?.value.trim() || null,
         // FIGURESMITH-BEGIN phase5-force-local-sam

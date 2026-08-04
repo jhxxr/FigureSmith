@@ -1,7 +1,7 @@
 {
   "name": "figuresmith-desktop",
   "private": true,
-  "version": "0.6.4",
+  "version": "0.6.5",
   "type": "module",
   "description": "FigureSmith / 图匠 desktop shell (Tauri 2 + Python sidecar)",
   "scripts": {

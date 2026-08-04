@@ -2,6 +2,23 @@
 
 All notable changes to FigureSmith are documented in this file.
 
+## [0.6.5] — 2026-08-04
+
+### Runtime startup and installer fixes
+
+- Make the packaged CPU Runtime V1 startup path visible: the splash now shows
+  locating, verification, backend startup, ready, and failure phases instead
+  of appearing frozen during the integrity check.
+- Verify the installed Runtime exactly once before starting the local backend,
+  and fail closed for missing, modified, incomplete, or unexpected runtime
+  content.
+- Validate the stable staged runtime resource after Tauri packaging so valid
+  MSI and Setup builds are not rejected because an internal build directory was
+  cleaned up.
+- Keep the CPU Runtime embedded in MSI/Setup, with the standalone Runtime ZIP
+  retained as an optional repair asset. Portable packaging and model weights
+  remain excluded.
+
 ## [0.6.4] — 2026-08-03
 
 ### Self-contained CPU Runtime V1

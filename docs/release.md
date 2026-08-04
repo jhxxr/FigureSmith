@@ -37,8 +37,11 @@ present and match the published ZIP.
 
 ## Desktop artifacts
 
-- [ ] Setup/MSI does not embed the companion runtime; installation is fail-closed
-      until the verified `runtime` directory is placed beside the executable.
+- [ ] Setup/MSI embeds the complete CPU Runtime V1; the user does not need to
+      create, extract, or rename a sibling `runtime` directory.
+- [ ] Startup visibly locates and verifies the installed runtime once before
+      launching the local backend; missing or modified content fails closed.
+- [ ] Do not build or publish a Portable package.
 - [ ] Model weights are imported by the user and are never uploaded.
 - [ ] WebView2 and the Visual C++ runtime remain documented OS prerequisites.
 

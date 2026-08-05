@@ -1,0 +1,7 @@
+{"file": "apps/backend/figuresmith/static/ui/common.js", "reason": "Theme runtime contract verification"}
+{"file": "apps/backend/figuresmith/static/ui/common.css", "reason": "Token set verification"}
+{"file": "vendor/autofigure_edit/web/styles.css", "reason": "Vendor theme mapping and Google Fonts removal"}
+{"file": "apps/backend/figuresmith/static/ui/welcome.html", "reason": "Welcome modernization"}
+{"file": "apps/desktop/index.html", "reason": "Splash UX modernization"}
+{"file": "vendor/autofigure_edit/web/app.js", "reason": "Vendor page theme apply hook"}
+{"file": "vendor/autofigure_edit/web/index.html", "reason": "Create regroup + theme switch"}

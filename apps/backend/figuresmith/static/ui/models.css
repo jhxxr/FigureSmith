@@ -1,4 +1,5 @@
-/* models page extras */
+/* models page extras — theme-aware */
+
 .fs-model-card h3 { margin-bottom: 4px; }
 .fs-model-meta {
   display: grid;
@@ -15,8 +16,9 @@
   margin-top: 8px;
   padding: 8px 10px;
   border-radius: 8px;
-  background: rgba(0,0,0,0.25);
+  background: var(--fs-surface-2);
   border: 1px solid var(--fs-border);
+  color: var(--fs-text);
 }
 .fs-model-transfer {
   position: relative;
@@ -33,7 +35,7 @@
   height: 7px;
   overflow: hidden;
   border-radius: 999px;
-  background: #2a3736;
+  background: var(--fs-progress-track);
 }
 .fs-model-transfer-bar {
   position: absolute;
@@ -45,9 +47,21 @@
   background: var(--fs-accent);
   animation: fs-model-transfer 1.15s ease-in-out infinite;
 }
-.fs-model-transfer.is-complete .fs-model-transfer-bar { width: 100%; animation: none; background: #50d2b3; }
-.fs-model-transfer.is-error .fs-model-transfer-bar { width: 100%; animation: none; background: var(--fs-danger); }
+.fs-model-transfer.is-complete .fs-model-transfer-bar {
+  width: 100%;
+  animation: none;
+  background: var(--fs-accent);
+}
+.fs-model-transfer.is-error .fs-model-transfer-bar {
+  width: 100%;
+  animation: none;
+  background: var(--fs-danger);
+}
 @keyframes fs-model-transfer {
   0% { transform: translateX(-120%); }
   100% { transform: translateX(330%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fs-model-transfer-bar { animation: none; width: 60%; }
 }

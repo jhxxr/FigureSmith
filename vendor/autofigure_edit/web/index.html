@@ -7,8 +7,13 @@
     <title>FigureSmith — Create</title>
     <link rel="icon" href="/fs/brand-mark.svg" type="image/svg+xml" />
     <!-- FIGURESMITH-END phase5-brand -->
+    <link rel="stylesheet" href="/fs/common.css" />
     <link rel="stylesheet" href="/styles.css" />
     <script src="/figuresmith-bridge.js"></script>
+    <script src="/fs/common.js"></script>
+    <script>
+      if (window.FigureSmithUI && FigureSmithUI.applyTheme) FigureSmithUI.applyTheme();
+    </script>
   </head>
   <body data-page="input">
     <div class="page">
@@ -35,6 +40,7 @@
             <button type="button" class="lang-chip" data-lang="zh">中文</button>
             <button type="button" class="lang-chip" data-lang="en">EN</button>
           </div>
+          <div class="theme-switch" data-fs-theme-switch></div>
         </div>
       </header>
 
@@ -49,7 +55,7 @@
           <div class="hint" id="methodHint">Tip: concise, structured method text yields cleaner templates.</div>
         </section>
 
-        <section class="card">
+        <section class="card create-side">
           <div class="field-group">
             <div class="field-header">
               <label class="field-label" id="pipelineRoutingLabel">Pipeline Routing</label>
@@ -170,75 +176,79 @@
             <div id="imageBaseUrlHint" class="hint">Used only when the step 1 image route switches to Custom.</div>
           </div>
 
-          <div class="field-group">
-            <label class="field-label" id="optimizeLabel" for="optimizeIterations">Optimize</label>
-            <input id="optimizeIterations" class="input" type="number" min="0" value="0" />
-          </div>
+          <details class="create-advanced advanced">
+            <summary id="advancedOptionsSummary">Advanced options</summary>
 
-          <div class="field-group" id="imageSizeGroup">
-            <label class="field-label" id="imageSizeLabel" for="imageSize">Image Size</label>
-            <select id="imageSize" class="input">
-              <option value="1K">1K</option>
-              <option value="2K">2K</option>
-              <option value="4K" selected>4K</option>
-            </select>
-          </div>
-
-          <div class="field-group">
-            <label class="field-label" id="upscaleLabel" for="upscaleEnabled">Auto Upscale</label>
-            <label id="upscaleText">
-              <input id="upscaleEnabled" type="checkbox" checked />
-              Upscale figure.png to a 4K long edge while preserving aspect ratio
-            </label>
-          </div>
-
-          <!-- FIGURESMITH-BEGIN phase5-local-sam -->
-          <div class="field-group">
-            <label class="field-label" id="samBackendLabel" for="samBackend">SAM3 Backend</label>
-            <input id="samBackend" type="hidden" value="local" />
-            <div class="hint" id="samBackendFixedHint">
-              Fixed to <strong>Local SAM3</strong>. Remote fal/Roboflow backends are not offered in FigureSmith desktop.
-              Import weights on the <a href="/models.html">Models</a> page if missing.
+            <div class="field-group">
+              <label class="field-label" id="optimizeLabel" for="optimizeIterations">Optimize</label>
+              <input id="optimizeIterations" class="input" type="number" min="0" value="0" />
             </div>
-          </div>
-          <!-- FIGURESMITH-END phase5-local-sam -->
 
-          <div class="field-group">
-            <label class="field-label" id="samPromptLabel" for="samPrompt">SAM Prompt</label>
-            <input
-              id="samPrompt"
-              type="text"
-              class="input"
-              value="icon,person,robot,animal"
-              placeholder="icon,person,robot,animal"
-            />
-          </div>
-
-          <!-- FIGURESMITH-BEGIN phase5-hide-remote-sam-key -->
-          <div class="field-group" id="samApiKeyGroup" hidden aria-hidden="true">
-            <label class="field-label" id="samApiKeyLabel" for="samApiKey">SAM3 API Key</label>
-            <input
-              id="samApiKey"
-              type="password"
-              class="input"
-              value=""
-              autocomplete="off"
-              disabled
-            />
-          </div>
-          <!-- FIGURESMITH-END phase5-hide-remote-sam-key -->
-
-          <div class="field-group">
-            <label class="field-label" id="referenceImageLabel" for="referenceFile">Reference Image</label>
-            <div class="upload-zone" id="uploadZone">
-              <input id="referenceFile" class="file-input" type="file" accept="image/*" />
-              <div class="upload-text" id="referenceUploadText">Drop image here or click to upload</div>
+            <div class="field-group" id="imageSizeGroup">
+              <label class="field-label" id="imageSizeLabel" for="imageSize">Image Size</label>
+              <select id="imageSize" class="input">
+                <option value="1K">1K</option>
+                <option value="2K">2K</option>
+                <option value="4K" selected>4K</option>
+              </select>
             </div>
-            <div class="upload-meta">
-              <img id="referencePreview" class="upload-preview" alt="Reference preview" />
-              <div id="referenceStatus" class="hint"></div>
+
+            <div class="field-group">
+              <label class="field-label" id="upscaleLabel" for="upscaleEnabled">Auto Upscale</label>
+              <label id="upscaleText">
+                <input id="upscaleEnabled" type="checkbox" checked />
+                Upscale figure.png to a 4K long edge while preserving aspect ratio
+              </label>
             </div>
-          </div>
+
+            <!-- FIGURESMITH-BEGIN phase5-local-sam -->
+            <div class="field-group">
+              <label class="field-label" id="samBackendLabel" for="samBackend">SAM3 Backend</label>
+              <input id="samBackend" type="hidden" value="local" />
+              <div class="hint" id="samBackendFixedHint">
+                Fixed to <strong>Local SAM3</strong>. Remote fal/Roboflow backends are not offered in FigureSmith desktop.
+                Import weights on the <a href="/models.html">Models</a> page if missing.
+              </div>
+            </div>
+            <!-- FIGURESMITH-END phase5-local-sam -->
+
+            <div class="field-group">
+              <label class="field-label" id="samPromptLabel" for="samPrompt">SAM Prompt</label>
+              <input
+                id="samPrompt"
+                type="text"
+                class="input"
+                value="icon,person,robot,animal"
+                placeholder="icon,person,robot,animal"
+              />
+            </div>
+
+            <!-- FIGURESMITH-BEGIN phase5-hide-remote-sam-key -->
+            <div class="field-group" id="samApiKeyGroup" hidden aria-hidden="true">
+              <label class="field-label" id="samApiKeyLabel" for="samApiKey">SAM3 API Key</label>
+              <input
+                id="samApiKey"
+                type="password"
+                class="input"
+                value=""
+                autocomplete="off"
+                disabled
+              />
+            </div>
+            <!-- FIGURESMITH-END phase5-hide-remote-sam-key -->
+
+            <div class="field-group">
+              <label class="field-label" id="referenceImageLabel" for="referenceFile">Reference Image</label>
+              <div class="upload-zone" id="uploadZone">
+                <input id="referenceFile" class="file-input" type="file" accept="image/*" />
+                <div class="upload-text" id="referenceUploadText">Drop image here or click to upload</div>
+              </div>
+              <div class="upload-meta">
+                <img id="referencePreview" class="upload-preview" alt="Reference preview" />
+                <div id="referenceStatus" class="hint"></div>
+              </div>
+            </div>
+          </details>
         </section>
 
         <section class="actions">

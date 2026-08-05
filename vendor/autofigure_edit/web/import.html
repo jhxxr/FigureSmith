@@ -7,8 +7,13 @@
     <title>FigureSmith — Import</title>
     <link rel="icon" href="/fs/brand-mark.svg" type="image/svg+xml" />
     <!-- FIGURESMITH-END phase5-brand -->
+    <link rel="stylesheet" href="/fs/common.css" />
     <link rel="stylesheet" href="/styles.css" />
     <script src="/figuresmith-bridge.js"></script>
+    <script src="/fs/common.js"></script>
+    <script>
+      if (window.FigureSmithUI && FigureSmithUI.applyTheme) FigureSmithUI.applyTheme();
+    </script>
   </head>
   <body data-page="import">
     <div class="page">
@@ -36,6 +41,7 @@
             <button type="button" class="lang-chip" data-lang="zh">中文</button>
             <button type="button" class="lang-chip" data-lang="en">EN</button>
           </div>
+          <div class="theme-switch" data-fs-theme-switch></div>
         </div>
       </header>
 

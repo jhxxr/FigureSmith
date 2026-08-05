@@ -822,6 +822,12 @@
   }
 
   const page = document.body.dataset.page;
+  if (window.FigureSmithUI && typeof window.FigureSmithUI.applyTheme === "function") {
+    window.FigureSmithUI.applyTheme();
+    document.querySelectorAll("[data-fs-theme-switch]").forEach((node) => {
+      window.FigureSmithUI.renderThemeSwitch(node);
+    });
+  }
   bindLanguageSwitchers();
   if (page === "input") {
     initInputPage();

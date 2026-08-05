@@ -7,6 +7,10 @@
   "use strict";
 
   var FS = global.FigureSmithUI || {};
+  var THEME_KEY = "figuresmith_theme_v1";
+  var THEME_VALUES = { light: true, dark: true, system: true };
+  var mediaQuery = null;
+  var mediaHandler = null;
 
   FS.isDesktop = function () {
     try {
@@ -41,6 +45,113 @@
     var locale = FS.getLocale();
     var table = (dict && dict[locale]) || (dict && dict.en) || {};
     return table[key] != null ? table[key] : key;
+  };
+
+  FS.getThemePreference = function () {
+    try {
+      var stored = global.localStorage.getItem(THEME_KEY);
+      if (stored && THEME_VALUES[stored]) return stored;
+    } catch (_e) {}
+    return "system";
+  };
+
+  FS.resolveTheme = function (pref) {
+    var preference = pref || FS.getThemePreference();
+    if (preference === "light" || preference === "dark") return preference;
+    try {
+      if (global.matchMedia && global.matchMedia("(prefers-color-scheme: dark)").matches) {
+        return "dark";
+      }
+    } catch (_e) {}
+    return "light";
+  };
+
+  function detachSystemListener() {
+    if (mediaQuery && mediaHandler) {
+      try {
+        if (mediaQuery.removeEventListener) {
+          mediaQuery.removeEventListener("change", mediaHandler);
+        } else if (mediaQuery.removeListener) {
+          mediaQuery.removeListener(mediaHandler);
+        }
+      } catch (_e) {}
+    }
+    mediaQuery = null;
+    mediaHandler = null;
+  }
+
+  function attachSystemListener() {
+    detachSystemListener();
+    if (!global.matchMedia) return;
+    try {
+      mediaQuery = global.matchMedia("(prefers-color-scheme: dark)");
+      mediaHandler = function () {
+        if (FS.getThemePreference() === "system") {
+          FS.applyTheme();
+        }
+      };
+      if (mediaQuery.addEventListener) {
+        mediaQuery.addEventListener("change", mediaHandler);
+      } else if (mediaQuery.addListener) {
+        mediaQuery.addListener(mediaHandler);
+      }
+    } catch (_e) {
+      mediaQuery = null;
+      mediaHandler = null;
+    }
+  }
+
+  FS.applyTheme = function () {
+    var preference = FS.getThemePreference();
+    var resolved = FS.resolveTheme(preference);
+    var root = document.documentElement;
+    root.setAttribute("data-theme", resolved);
+    root.setAttribute("data-theme-preference", preference);
+    root.style.colorScheme = resolved;
+    if (preference === "system") {
+      attachSystemListener();
+    } else {
+      detachSystemListener();
+    }
+    var mounts = document.querySelectorAll("[data-fs-theme-switch]");
+    for (var i = 0; i < mounts.length; i++) {
+      FS.renderThemeSwitch(mounts[i]);
+    }
+    return resolved;
+  };
+
+  FS.setThemePreference = function (pref) {
+    var next = THEME_VALUES[pref] ? pref : "system";
+    try {
+      global.localStorage.setItem(THEME_KEY, next);
+    } catch (_e) {}
+    return FS.applyTheme();
+  };
+
+  FS.renderThemeSwitch = function (container) {
+    if (!container) return;
+    var locale = FS.getLocale();
+    var preference = FS.getThemePreference();
+    var labels =
+      locale === "zh"
+        ? { light: "浅色", dark: "深色", system: "系统" }
+        : { light: "Light", dark: "Dark", system: "System" };
+    var options = ["light", "dark", "system"];
+    container.setAttribute("data-fs-theme-switch", "");
+    container.classList.add("fs-theme-switch");
+    container.innerHTML = "";
+    options.forEach(function (code) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "fs-chip" + (preference === code ? " is-active" : "");
+      b.setAttribute("data-theme-option", code);
+      b.setAttribute("aria-pressed", preference === code ? "true" : "false");
+      b.textContent = labels[code];
+      b.addEventListener("click", function () {
+        FS.setThemePreference(code);
+      });
+      container.appendChild(b);
+    });
   };
 
   FS.authHeaders = function (extra) {
@@ -135,6 +246,7 @@
       nav.appendChild(a);
     });
     var langWrap = document.createElement("span");
+    langWrap.className = "fs-lang-switch";
     langWrap.style.display = "inline-flex";
     langWrap.style.gap = "6px";
     ["zh", "en"].forEach(function (code) {
@@ -149,7 +261,25 @@
       langWrap.appendChild(b);
     });
     nav.appendChild(langWrap);
+
+    var themeWrap = document.createElement("span");
+    themeWrap.setAttribute("data-fs-theme-switch", "");
+    themeWrap.className = "fs-theme-switch";
+    themeWrap.style.display = "inline-flex";
+    themeWrap.style.gap = "6px";
+    nav.appendChild(themeWrap);
+    FS.renderThemeSwitch(themeWrap);
   };
 
   global.FigureSmithUI = FS;
+
+  function bootTheme() {
+    FS.applyTheme();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bootTheme);
+  } else {
+    bootTheme();
+  }
 })(window);

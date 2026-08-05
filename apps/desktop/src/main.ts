@@ -1,6 +1,8 @@
 import { listen } from "@tauri-apps/api/event";
 
 const statusEl = document.querySelector<HTMLElement>("#status");
+const splashEl = document.querySelector<HTMLElement>("#splashCard");
+const progressEl = document.querySelector<HTMLElement>(".progress");
 const isZh = navigator.language.toLowerCase().startsWith("zh");
 
 type StartupPhase = "locating" | "verifying" | "starting" | "ready" | "error";
@@ -14,9 +16,27 @@ interface StartupStatus {
   detail?: string;
 }
 
+const PHASE_PROGRESS: Record<StartupPhase, number> = {
+  locating: 18,
+  verifying: 52,
+  starting: 78,
+  ready: 100,
+  error: 100,
+};
+
+function setPhase(phase: StartupPhase): void {
+  if (splashEl) {
+    splashEl.dataset.phase = phase;
+  }
+  if (progressEl) {
+    progressEl.setAttribute("aria-valuenow", String(PHASE_PROGRESS[phase] ?? 0));
+  }
+}
+
 function renderStatus(event: StartupStatus): void {
   if (!statusEl) return;
 
+  setPhase(event.phase);
   statusEl.classList.toggle("error", event.phase === "error");
   if (event.phase === "error") {
     const message = event.code === "runtime-missing"
@@ -47,6 +67,20 @@ function renderStatus(event: StartupStatus): void {
           : `Verified ${event.checked_files.toLocaleString()} / ${event.total_files.toLocaleString()} files`
         : isZh ? "正在读取 Runtime 清单并准备校验..." : "Reading the Runtime manifest and preparing verification...";
       message = `${isZh ? "正在验证内置 Runtime V1" : "Verifying the packaged Runtime V1"}...\n${progress}`;
+      if (
+        progressEl &&
+        event.checked_files !== undefined &&
+        event.total_files !== undefined &&
+        event.total_files > 0
+      ) {
+        const ratio = Math.min(1, Math.max(0, event.checked_files / event.total_files));
+        const value = Math.round(24 + ratio * 48);
+        progressEl.setAttribute("aria-valuenow", String(value));
+        const bar = progressEl.querySelector("span");
+        if (bar) {
+          (bar as HTMLElement).style.width = `${value}%`;
+        }
+      }
       break;
     }
     case "starting":

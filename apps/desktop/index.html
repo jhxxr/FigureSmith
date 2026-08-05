@@ -5,88 +5,182 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>FigureSmith</title>
     <style>
+      /*
+        Desktop splash tokens — keep in sync with apps/backend/figuresmith/static/ui/common.css.
+        Splash cannot load /fs/* before the backend is up, so tokens are inlined here.
+      */
       :root {
-        color-scheme: dark;
-        font-family: "Segoe UI", system-ui, sans-serif;
-        background: #0f1317;
-        color: #f1f5f7;
+        color-scheme: dark light;
+        --fs-bg: #0f1317;
+        --fs-surface: #171c21;
+        --fs-surface-2: #20272e;
+        --fs-border: #35404a;
+        --fs-text: #f1f5f7;
+        --fs-muted: #a8b5bd;
+        --fs-accent: #50d2b3;
+        --fs-on-accent: #062a23;
+        --fs-danger: #ef4444;
+        --fs-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+        --fs-font: "Segoe UI", system-ui, -apple-system, sans-serif;
+        --fs-progress-track: #2a3736;
+        font-family: var(--fs-font);
+        background: var(--fs-bg);
+        color: var(--fs-text);
       }
+
+      @media (prefers-color-scheme: light) {
+        :root {
+          color-scheme: light;
+          --fs-bg: #f2ede7;
+          --fs-surface: #fefbf7;
+          --fs-surface-2: #f5f1eb;
+          --fs-border: rgba(31, 27, 26, 0.12);
+          --fs-text: #1f1b1a;
+          --fs-muted: #6d6460;
+          --fs-accent: #169b9b;
+          --fs-on-accent: #ffffff;
+          --fs-danger: #c44536;
+          --fs-shadow: 0 18px 42px rgba(31, 27, 26, 0.12);
+          --fs-progress-track: rgba(22, 155, 155, 0.16);
+        }
+      }
+
       * { box-sizing: border-box; }
       body {
         margin: 0;
         min-height: 100vh;
         display: grid;
         place-items: center;
-        background: #0f1317;
+        background:
+          radial-gradient(circle at top left, color-mix(in srgb, var(--fs-accent) 12%, transparent), transparent 42%),
+          var(--fs-bg);
+        color: var(--fs-text);
+        font-family: var(--fs-font);
       }
       .splash {
         width: min(560px, calc(100vw - 32px));
         padding: 28px;
-        border: 1px solid #35404a;
-        border-radius: 10px;
-        background: #171c21;
-        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+        border: 1px solid var(--fs-border);
+        border-radius: 14px;
+        background: var(--fs-surface);
+        box-shadow: var(--fs-shadow);
       }
       .brand { display: flex; align-items: center; gap: 12px; }
       .mark {
-        width: 38px;
-        height: 38px;
+        width: 40px;
+        height: 40px;
         display: grid;
         place-items: center;
-        border-radius: 8px;
-        background: #50d2b3;
-        color: #062a23;
-        font-size: 1.1rem;
+        border-radius: 10px;
+        background: var(--fs-accent);
+        color: var(--fs-on-accent);
+        font-size: 1.05rem;
         font-weight: 800;
       }
-      .brand-name { font-size: 1.05rem; font-weight: 700; }
-      .brand-sub { margin-top: 3px; color: #a8b5bd; font-size: 0.8rem; }
+      .brand-name { font-size: 1.08rem; font-weight: 700; }
+      .brand-sub { margin-top: 3px; color: var(--fs-muted); font-size: 0.8rem; }
       .eyebrow {
-        margin: 34px 0 8px;
-        color: #50d2b3;
+        margin: 28px 0 8px;
+        color: var(--fs-accent);
         font-size: 0.72rem;
         font-weight: 700;
         letter-spacing: 0.08em;
         text-transform: uppercase;
       }
-      h1 { margin: 0; font-size: 1.55rem; line-height: 1.2; }
-      .copy { margin: 10px 0 0; color: #a8b5bd; line-height: 1.5; }
+      h1 { margin: 0; font-size: 1.55rem; line-height: 1.2; letter-spacing: -0.02em; }
+      .copy { margin: 10px 0 0; color: var(--fs-muted); line-height: 1.5; }
+      .progress {
+        margin-top: 18px;
+        height: 8px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: var(--fs-progress-track);
+      }
+      .progress > span {
+        display: block;
+        height: 100%;
+        width: 18%;
+        border-radius: inherit;
+        background: var(--fs-accent);
+        transition: width 0.28s ease;
+      }
+      .splash[data-phase="locating"] .progress > span { width: 18%; }
+      .splash[data-phase="verifying"] .progress > span { width: 52%; }
+      .splash[data-phase="starting"] .progress > span { width: 78%; }
+      .splash[data-phase="ready"] .progress > span { width: 100%; }
+      .splash[data-phase="error"] .progress > span {
+        width: 100%;
+        background: var(--fs-danger);
+      }
       .status {
-        min-height: 68px;
-        margin-top: 20px;
+        min-height: 72px;
+        margin-top: 14px;
         padding: 14px;
-        border: 1px solid #35404a;
-        border-radius: 8px;
-        background: #20272e;
-        color: #d5f9ed;
+        border: 1px solid var(--fs-border);
+        border-radius: 10px;
+        background: var(--fs-surface-2);
+        color: var(--fs-text);
         font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
         font-size: 0.82rem;
         line-height: 1.55;
         white-space: pre-wrap;
         overflow-wrap: anywhere;
       }
-      .status.error { color: #fecaca; border-color: rgba(239, 68, 68, 0.45); background: rgba(239, 68, 68, 0.08); }
+      .status.error {
+        color: #fecaca;
+        border-color: color-mix(in srgb, var(--fs-danger) 45%, transparent);
+        background: color-mix(in srgb, var(--fs-danger) 10%, transparent);
+      }
+      @media (prefers-color-scheme: light) {
+        .status.error { color: #991b1b; }
+      }
       .setup-actions { margin-top: 16px; }
       .setup-actions button {
         width: 100%;
         padding: 11px 14px;
-        border: 1px solid #50d2b3;
-        border-radius: 7px;
-        background: #50d2b3;
-        color: #062a23;
+        border: 1px solid var(--fs-accent);
+        border-radius: 8px;
+        background: var(--fs-accent);
+        color: var(--fs-on-accent);
         cursor: pointer;
         font: inherit;
         font-weight: 700;
       }
       .setup-actions button:disabled { cursor: wait; opacity: 0.65; }
-      .setup-actions p { margin: 8px 0 0; color: #a8b5bd; font-size: 0.78rem; line-height: 1.45; }
+      .setup-actions p { margin: 8px 0 0; color: var(--fs-muted); font-size: 0.78rem; line-height: 1.45; }
       .loading { display: inline-flex; align-items: center; gap: 8px; }
-      .dot { width: 7px; height: 7px; border-radius: 50%; background: #50d2b3; }
-      @media (max-width: 480px) { .splash { padding: 22px; } .eyebrow { margin-top: 26px; } }
+      .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--fs-accent);
+        animation: pulse 1.1s ease-in-out infinite;
+      }
+      .footer {
+        margin: 16px 0 0;
+        color: var(--fs-muted);
+        font-size: 0.78rem;
+        line-height: 1.45;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 0.45; transform: scale(0.9); }
+        50% { opacity: 1; transform: scale(1); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+          animation-duration: 0.01ms !important;
+          transition-duration: 0.01ms !important;
+        }
+        .dot { animation: none; }
+      }
+      @media (max-width: 480px) {
+        .splash { padding: 22px; }
+        .eyebrow { margin-top: 22px; }
+      }
     </style>
   </head>
   <body>
-    <main class="splash" aria-live="polite">
+    <main class="splash" id="splashCard" data-phase="locating" aria-live="polite">
       <div class="brand">
         <div class="mark" aria-hidden="true">FS</div>
         <div>
@@ -97,6 +191,9 @@
       <p class="eyebrow">Local startup</p>
       <h1>Preparing your workspace</h1>
       <p class="copy">Verifying the self-contained FigureSmith runtime before starting the local backend. Model weights remain external and can be imported in the app.</p>
+      <div class="progress" role="progressbar" aria-label="Startup progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="18">
+        <span id="progressBar"></span>
+      </div>
       <div id="status" class="status"><span class="loading"><span class="dot"></span>Locating the installed Runtime V1...</span></div>
       <p class="footer">FigureSmith uses the Runtime V1 installed by Setup/MSI. Startup verifies it before the local backend is allowed to run; model weights remain external.</p>
     </main>

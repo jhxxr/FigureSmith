@@ -1,36 +1,67 @@
+/* Welcome page — theme-aware, modern first-run layout */
+
 .fs-hero {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(290px, 0.8fr);
   gap: 24px;
   padding: 26px;
-  border-color: #3c6b60;
-  background: #17221f;
+  border-color: var(--fs-hero-border);
+  background: var(--fs-hero-bg);
 }
-.fs-hero-copy { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
-.fs-hero h1 { margin: 0 0 11px; font-size: clamp(1.8rem, 4vw, 2.7rem); line-height: 1.12; }
-.fs-hero p:not(.fs-eyebrow):not(.fs-inline-status) { max-width: 58ch; margin: 0; font-size: 1.02rem; }
+.fs-hero-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+.fs-hero h1 {
+  margin: 0 0 11px;
+  font-size: clamp(1.8rem, 4vw, 2.55rem);
+  line-height: 1.12;
+  letter-spacing: -0.02em;
+}
+.fs-hero p:not(.fs-eyebrow):not(.fs-inline-status) {
+  max-width: 58ch;
+  margin: 0;
+  font-size: 1.02rem;
+}
 .fs-hero-status {
   min-width: 0;
   padding: 16px;
   border: 1px solid var(--fs-border);
-  border-radius: 8px;
-  background: rgba(15, 19, 23, 0.42);
+  border-radius: 10px;
+  background: var(--fs-surface);
+  box-shadow: var(--fs-shadow-sm);
 }
 .fs-hero-status h2 { font-size: 1.08rem; }
-.fs-hero-status .fs-status-grid { margin-top: 13px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.fs-hero-status .fs-status-grid {
+  margin-top: 13px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
 .fs-hero-status .fs-status-card { min-height: 72px; }
 .fs-hero-status .fs-status-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
-.fs-btn.quiet { background: transparent; border-color: transparent; color: var(--fs-muted); }
-.fs-btn.quiet:hover { background: var(--fs-surface-2); border-color: var(--fs-border); color: var(--fs-text); }
+
+.fs-btn.quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--fs-muted);
+}
+.fs-btn.quiet:hover {
+  background: var(--fs-surface-2);
+  border-color: var(--fs-border);
+  color: var(--fs-text);
+}
+
 .fs-wizard { scroll-margin-top: 92px; }
 .fs-wizard .fs-progress { margin: 6px 0 14px; }
 .fs-wizard-actions { justify-content: flex-end; }
 .fs-wizard-actions #btnBack { margin-right: auto; }
+
 .fs-progress {
   height: 7px;
   overflow: hidden;
   border-radius: 999px;
-  background: #2a3736;
+  background: var(--fs-progress-track);
 }
 .fs-progress > span {
   display: block;
@@ -40,8 +71,17 @@
   background: var(--fs-accent);
   transition: width 0.25s ease;
 }
-.fs-step strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fs-step-copy { margin: 14px 0 0; color: var(--fs-muted); }
+
+.fs-step strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fs-step-copy {
+  margin: 14px 0 0;
+  color: var(--fs-muted);
+}
+
 .fs-status-detail {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -59,6 +99,7 @@
   overflow-wrap: anywhere;
   font-size: 0.88rem;
 }
+
 .fs-dependency-panel {
   margin-top: 16px;
   padding: 16px;
@@ -70,6 +111,7 @@
 .fs-dependency-panel p { margin: 0; }
 .fs-dependency-note { margin-top: 10px !important; }
 .fs-missing-list { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+
 .fs-command {
   display: block;
   margin-top: 13px;
@@ -77,12 +119,13 @@
   overflow-wrap: anywhere;
   border: 1px solid var(--fs-border-strong);
   border-radius: 7px;
-  background: #101519;
-  color: #d5f9ed;
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  background: var(--fs-command-bg);
+  color: var(--fs-command-fg);
+  font-family: var(--fs-mono);
   font-size: 0.79rem;
   line-height: 1.5;
 }
+
 .fs-import-panel {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -95,6 +138,7 @@
 }
 .fs-import-panel h3 { margin-bottom: 4px; font-size: 1rem; }
 .fs-import-panel p { margin: 0; }
+
 .fs-model-file {
   display: grid;
   gap: 5px;
@@ -102,19 +146,20 @@
   padding: 10px 11px;
   border: 1px solid var(--fs-border);
   border-radius: 7px;
-  background: #11181b;
+  background: var(--fs-surface);
   color: var(--fs-muted);
   font-size: 0.82rem;
 }
-.fs-model-file strong.ok { color: #50d2b3; }
-.fs-model-file strong.warn { color: #f4c95d; }
+.fs-model-file strong.ok { color: var(--fs-accent); }
+.fs-model-file strong.warn { color: var(--fs-warn); }
 .fs-model-path {
   display: block;
   overflow-wrap: anywhere;
   color: var(--fs-text);
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-family: var(--fs-mono);
   font-size: 0.76rem;
 }
+
 .fs-import-progress {
   position: relative;
   display: grid;
@@ -128,7 +173,7 @@
   height: 7px;
   overflow: hidden;
   border-radius: 999px;
-  background: #2a3736;
+  background: var(--fs-progress-track);
 }
 .fs-import-progress-bar {
   position: absolute;
@@ -140,9 +185,20 @@
   background: var(--fs-accent);
   animation: fs-import-slide 1.15s ease-in-out infinite;
 }
-.fs-import-progress.is-complete .fs-import-progress-bar { width: 100%; animation: none; background: #50d2b3; }
-.fs-import-progress.is-error .fs-import-progress-bar { width: 100%; animation: none; background: var(--fs-danger); }
-.fs-import-progress-label { color: var(--fs-muted); font-size: 0.78rem; }
+.fs-import-progress.is-complete .fs-import-progress-bar {
+  width: 100%;
+  animation: none;
+  background: var(--fs-accent);
+}
+.fs-import-progress.is-error .fs-import-progress-bar {
+  width: 100%;
+  animation: none;
+  background: var(--fs-danger);
+}
+.fs-import-progress-label {
+  color: var(--fs-muted);
+  font-size: 0.78rem;
+}
 @keyframes fs-import-slide {
   0% { transform: translateX(-120%); }
   100% { transform: translateX(330%); }
@@ -157,6 +213,11 @@
 }
 
 @media (max-width: 420px) {
-  .fs-hero-status .fs-status-grid, .fs-status-detail { grid-template-columns: 1fr; }
+  .fs-hero-status .fs-status-grid,
+  .fs-status-detail { grid-template-columns: 1fr; }
   .fs-hero-status .fs-status-card:last-child:nth-child(odd) { grid-column: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fs-import-progress-bar { animation: none; width: 60%; }
 }

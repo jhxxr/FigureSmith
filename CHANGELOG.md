@@ -2,6 +2,16 @@
 
 All notable changes to FigureSmith are documented in this file.
 
+## [0.6.7] — 2026-08-05
+
+### UI theme and first-run polish
+
+- Add a shared light / dark / system theme across Welcome, Models, Create, Import, History, Guide, Canvas shell, and the desktop splash.
+- Persist theme preference in `localStorage` (`figuresmith_theme_v1`) and follow OS appearance when set to system.
+- Modernize the desktop splash and Welcome first-run surfaces while keeping startup and onboarding business logic unchanged.
+- Regroup Create advanced options for clearer hierarchy without changing control ids, bindings, or submit behavior.
+- Remove the Google Fonts CDN dependency from the main flow; use the system font stack for offline desktop use.
+
 ## [0.6.6] — 2026-08-04
 
 ### Custom provider bindings

@@ -1,6 +1,6 @@
 [package]
 name = "figuresmith-desktop"
-version = "0.6.6"
+version = "0.6.7"
 description = "FigureSmith / 图匠 desktop shell"
 authors = ["FigureSmith contributors"]
 edition = "2021"
